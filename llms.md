@@ -1,6 +1,6 @@
 # Paiflow developer context guide
 
-Shared technical guidance updated Oct 12, 2026. API and product details checked against pinkraft `staging` @ b945e6a. Testnet only.
+Shared technical guidance updated Oct 12, 2026. API details checked against pinkraft `staging` source @ 9ae4172; confirm hosted availability before using new wallet workflows. Testnet only.
 
 ## Choose the right resource
 
@@ -196,7 +196,9 @@ The usual trigger QR opens this hosted page (or the allowance page for a subscri
 On builds containing capabilities discovery, `GET /api/v1/deployments/:id/capabilities` with the
 deployment's bearer token returns `data` with `network`, `triggerType`, initial `inputAsset` metadata,
 `configurationSource: "deployment_snapshot"` and `operations`. Operation keys are `execute`,
-`events`, `transactions`, `releaseEarly`, `payouts`, `webhook` and `subscriptionAllowance`. Each has
+`events`, `balances`, `funding`, `transactions`, `releaseEarly`, `payouts`, `webhook`,
+`subscriptionState`, `subscriptionAllowance`, `subscriptionCancel`,
+`subscriptionReactivate`, `swapQuote`, `scheduleState` and `scheduleControls`. Each has
 `status` (`supported`, `conditional` or `unsupported`), `authentication`, `requirements` and
 candidate `nodeIds`. This is recorded integration support, not live readiness: no RPC or transaction
 is performed, and current funds, deadlines, consent and eligibility must be checked through the
@@ -206,11 +208,47 @@ still require `x-webhook-secret`; allowance approval requires the configured sub
 Discovery never returns credentials, recipient/subscriber addresses or private graph settings.
 Limit: 60 requests/minute per token; confirmed deployments on this environment's network only.
 
+### Other promoted deployment APIs
+
+These APIs are available on eligible deployments in the promoted Paiflow service; this starter's
+server client and UI currently implement deposit-triggered payments and event reads. Add an authenticated server
+route and a typed method in `lib/paiflow.ts` before using another path. Check capabilities first,
+then use the operation's live state or preparation endpoint. Keep the bearer token on the server.
+
+- `GET /balances` reads contract token holdings with freshness and completeness indicators.
+  A stale or partial result is not zero or proof of payment. Schedule payout availability is
+  reported by `/schedule/state`, not inferred from token holdings.
+- `GET /swap-quote?amountStroops=…` estimates one deployed Swap node. Pass `nodeId` when several
+  exist; the live contract chooses assets, router and slippage. The quote does not guarantee a
+  whole-flow payout or future execution price.
+- `GET /subscription/state` reads the configured subscriber, allowance and cancellation state.
+  The configured subscriber's wallet must sign allowance approval and any cancellation or
+  reactivation; a deployment token alone cannot consent. Cancellation revokes allowance.
+  Reactivation grants no allowance and makes no immediate charge.
+- `POST /subscription/{cancel|reactivate}/prepare`, `/submit` and `/reconcile` use the exact
+  prepared XDR and a durable `intent`/`txHash`. Keep the original intent through `PENDING`,
+  `UNKNOWN`, timeouts and queue refusal; reconcile before replacing it. An authenticated app
+  server must authorize who may request the action before proxying it.
+- GET/POST `/funding` discovers the live asset and prepares a Schedule top-up or Webhook pool
+  deposit. The funding wallet signs; `/funding/submit` sends it and `/funding/reconcile`
+  resolves uncertain attempts. Funding does not trigger a payout or callback.
+- `GET /schedule/state` reads the live controller, pause permissions and vested entitlement.
+  `POST /schedule/{pause|resume|retrieve}`, then the matching `/submit` or `/reconcile`,
+  requires the current controller wallet. Retrieval sends eligible unvested funds to that
+  controller; the caller cannot choose another recipient or amount. One unresolved intent
+  per node blocks replacement across Schedule controls and funding.
+
+For request schemas, status handling and limits, use the [API reference](https://github.com/artisam-paiflow/paiflow/blob/develop/docs/api/README.md),
+[funding guide](https://github.com/artisam-paiflow/paiflow/blob/develop/docs/api/funding.md) and
+[Schedule controls guide](https://github.com/artisam-paiflow/paiflow/blob/develop/docs/api/schedule-controls.md).
+Hosted testnet verification of the new wallet workflows remains pending; confirm the deployed
+version before presenting them as participant-ready.
+
 ## Authentication and integration boundary
 
 Use `Authorization: Bearer pfk_<64 lowercase hex characters>`. A token is bound to exactly one deployment. Mint it in **API access** on the team's confirmed deployment; it is shown only once. Store it on the app server. Missing, malformed, unknown, expired, revoked or wrong-deployment tokens all return HTTP 401 `UNAUTHENTICATED`, with `A valid API token for this deployment is required`. A malformed deployment UUID is 404. Revocation takes effect on the next call.
 
-**Put all Paiflow calls in one typed, server-only `lib/paiflow.ts` module in the starter repo, and call the API through it.** Use `import "server-only";`, read `PAIFLOW_API_TOKEN` and `PAIFLOW_DEPLOYMENT_ID` from server environment, and expose `prepareExecute`, `submitExecute`, `listEvents`, `preparePayout`, `submitPayout`, `releaseEarly`. Its header should say: `starter code, not a supported package — edit freely.` Follow the shapes below and the public OpenAPI document. Do not invent other v1 methods. Keep the bearer token out of browser bundles, browser requests and logs.
+**Put all Paiflow calls in one typed, server-only `lib/paiflow.ts` module in the starter repo, and call the API through it.** Use `import "server-only";` and read `PAIFLOW_API_TOKEN` and `PAIFLOW_DEPLOYMENT_ID` from server environment. The supplied client exposes `prepareExecute`, `submitExecute`, `listEvents`, `preparePayout`, `submitPayout` and `releaseEarly`; new operations above require explicit implementation. Its header should say: `starter code, not a supported package — edit freely.` Follow the public OpenAPI document when extending it. Keep the bearer token out of browser bundles, browser requests and logs.
 
 Browser → your app's server → Paiflow is the API path. The server returns unsigned preparation data to the browser. The customer's wallet signs there; the browser sends the signed envelope back to your server, which submits it. No private key crosses that boundary. Protect your own server routes: a browser action must not let an unauthorised caller release escrow or choose a payout recipient merely because your server holds the token.
 
