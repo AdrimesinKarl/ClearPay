@@ -4,18 +4,18 @@ Shared technical guidance updated Oct 12, 2026. API details checked against pink
 
 ## Choose the right resource
 
-| Resource                                                                                                             | Purpose                                                                                                                    |
-| -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| [Paiflow Guide](https://github.com/artisam-paiflow/paiflow/blob/develop/docs/hackathon/paiflow-guide.md)         | Wallet setup, building and deploying a flow, and configuring the ready-wired starter.                                      |
-| [API quickstart](https://github.com/artisam-paiflow/paiflow/blob/develop/docs/hackathon/developer-api-quickstart.md) | A separate Next.js frontend/backend example for an app built without the starter. Do not copy its routes into the starter. |
-| [Full API reference](https://github.com/artisam-paiflow/paiflow/blob/develop/docs/api/README.md)                     | Endpoint schemas, errors, limits, pagination and advanced workflows.                                                       |
-| [OpenAPI JSON](https://github.com/artisam-paiflow/paiflow/blob/develop/docs/api/openapi.json) | Machine-readable endpoint schemas for integration tools. |
-| [Postman collection](https://github.com/artisam-paiflow/paiflow/blob/develop/docs/api/paiflow-api-v1.postman_collection.json) | Runnable API requests for your configured deployment. |
-| [Starter configuration](https://github.com/artisam-paiflow/paiflow-hackathon-starter/blob/main/.env.example) | Server-only mode, platform origin, deployment UUID and token settings. |
-| [Starter agent instructions](https://github.com/artisam-paiflow/paiflow-hackathon-starter/blob/main/AGENTS.md) | Coding boundaries, event scope and verification commands. |
-| [Starter package manifest](https://github.com/artisam-paiflow/paiflow-hackathon-starter/blob/main/package.json) | Node.js range, package manager, dependencies and scripts. |
-| [Starter server client](https://github.com/artisam-paiflow/paiflow-hackathon-starter/blob/main/lib/paiflow.ts) | Current implementation of mode guards and Paiflow API calls. |
-| This `llms.md`                                                                                                       | Product constraints, API details and examples for AI-assisted development. It complements the human walkthroughs.          |
+| Resource                                                                                                                      | Purpose                                                                                                                    |
+| ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| [Paiflow Guide](https://github.com/artisam-paiflow/paiflow/blob/develop/docs/hackathon/paiflow-guide.md)                      | Wallet setup, building and deploying a flow, and configuring the ready-wired starter.                                      |
+| [API quickstart](https://github.com/artisam-paiflow/paiflow/blob/develop/docs/hackathon/developer-api-quickstart.md)          | A separate Next.js frontend/backend example for an app built without the starter. Do not copy its routes into the starter. |
+| [Full API reference](https://github.com/artisam-paiflow/paiflow/blob/develop/docs/api/README.md)                              | Endpoint schemas, errors, limits, pagination and advanced workflows.                                                       |
+| [OpenAPI JSON](https://github.com/artisam-paiflow/paiflow/blob/develop/docs/api/openapi.json)                                 | Machine-readable endpoint schemas for integration tools.                                                                   |
+| [Postman collection](https://github.com/artisam-paiflow/paiflow/blob/develop/docs/api/paiflow-api-v1.postman_collection.json) | Runnable API requests for your configured deployment.                                                                      |
+| [Starter configuration](https://github.com/artisam-paiflow/paiflow-hackathon-starter/blob/main/.env.example)                  | Server-only mode, platform origin, deployment UUID and token settings.                                                     |
+| [Starter agent instructions](https://github.com/artisam-paiflow/paiflow-hackathon-starter/blob/main/AGENTS.md)                | Coding boundaries, event scope and verification commands.                                                                  |
+| [Starter package manifest](https://github.com/artisam-paiflow/paiflow-hackathon-starter/blob/main/package.json)               | Node.js range, package manager, dependencies and scripts.                                                                  |
+| [Starter server client](https://github.com/artisam-paiflow/paiflow-hackathon-starter/blob/main/lib/paiflow.ts)                | Current implementation of mode guards and Paiflow API calls.                                                               |
+| This `llms.md`                                                                                                                | Product constraints, API details and examples for AI-assisted development. It complements the human walkthroughs.          |
 
 Use the Markdown sources above when supplying references to an AI assistant. Participant-facing PDFs are presentation copies; keep them aligned with these sources.
 
@@ -363,7 +363,8 @@ function config() {
   const origin = process.env.PAIFLOW_BASE_URL;
   const deploymentId = process.env.PAIFLOW_DEPLOYMENT_ID;
   const token = process.env.PAIFLOW_API_TOKEN;
-  if (!origin || !deploymentId || !token) throw new Error("Set Paiflow server configuration");
+  if (!origin || !deploymentId || !token)
+    throw new Error("Set Paiflow server configuration");
   return { origin, deploymentId, token };
 }
 async function call<T>(
@@ -374,14 +375,19 @@ async function call<T>(
   preparationRequestId?: string | null,
 ): Promise<T> {
   const { origin, deploymentId, token } = config();
-  const url = new URL(["api", "v1", "deployments", deploymentId, endpoint].join("/"), origin + "/");
+  const url = new URL(
+    ["api", "v1", "deployments", deploymentId, endpoint].join("/"),
+    origin + "/",
+  );
   if (query) url.search = query.toString();
   const response = await fetch(url, {
     method,
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
-      ...(preparationRequestId ? { "x-preparation-request-id": preparationRequestId } : {}),
+      ...(preparationRequestId
+        ? { "x-preparation-request-id": preparationRequestId }
+        : {}),
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
@@ -403,7 +409,10 @@ async function call<T>(
   }
   if (!response.ok) throw new Error(unexpected);
   if (endpoint === "execute") {
-    return { ...result.data, preparationRequestId: response.headers.get("x-history-request-id") };
+    return {
+      ...result.data,
+      preparationRequestId: response.headers.get("x-history-request-id"),
+    };
   }
   return result.data;
 }
@@ -457,8 +466,14 @@ type EventItem = {
   occurredAt: string;
   data: unknown;
 };
-type EventPage = { items: EventItem[]; nextCursor: string | null; hasMore: boolean };
-export function listEvents(input: { cursor?: string; limit?: number; txHash?: string } = {}) {
+type EventPage = {
+  items: EventItem[];
+  nextCursor: string | null;
+  hasMore: boolean;
+};
+export function listEvents(
+  input: { cursor?: string; limit?: number; txHash?: string } = {},
+) {
   const query = new URLSearchParams();
   if (input.cursor) query.set("cursor", input.cursor);
   if (input.limit !== undefined) query.set("limit", String(input.limit));
@@ -488,7 +503,11 @@ Append to the same module; change `deadline` to the condition's actual node id:
 
 ```ts
 export const releaseEarly = (input: { nodeId?: string } = {}) =>
-  call<{ nodeId: string; txHash: string; ledger?: number }>("release-early", "POST", input);
+  call<{ nodeId: string; txHash: string; ledger?: number }>(
+    "release-early",
+    "POST",
+    input,
+  );
 // In an authorised server handler: await releaseEarly({ nodeId: "deadline" });
 ```
 
@@ -516,7 +535,9 @@ export async function getOpenApi(origin: string): Promise<unknown> {
 export async function getDemoToken(origin: string) {
   if (process.env.PAIFLOW_MODE !== "demo")
     throw new Error("Demo access requires explicit demo mode");
-  const response = await fetch(new URL("/api/v1/demo-token", origin), { method: "POST" });
+  const response = await fetch(new URL("/api/v1/demo-token", origin), {
+    method: "POST",
+  });
   const body = (await response.json()) as
     | { data: { deploymentId: string; token: string; expiresAt: string } }
     | { error: ApiFailure };
@@ -556,17 +577,17 @@ The quoted text below is returned by the API or its contract error translation. 
 
 > `from` must be a funded account on this network: it pays the deposit and the fee, and signs the envelope. The flow's payout recipient must hold a trustline for the asset it receives; a missing trustline reverts the whole pipeline.
 
-| Failure / exact message                                                                                                                                                     | What to do                                                                                                                                                               |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `TrustlineMissingError`: `The payout recipient has no trustline for {asset}. The recipient must add a trustline for {asset} before this flow can pay them.`                 | Add the recipient's trustline to the exact testnet code/issuer, then prepare again. It is normally a 422 simulation refusal, not a partial payout.                       |
-| `AccountMissingError`: `The account receiving {asset} doesn't exist on this network yet. Fund it with XLM first, then add a trustline for {asset}.`                         | Friendbot-fund the recipient and add its line.                                                                                                                           |
-| `BalanceError`: `There isn't enough {asset} to cover this transfer.`                                                                                                        | Check payer/input balance, and any funded contract balance needed by the flow. Top up the correct testnet asset.                                                         |
-| `Insufficient balance to cover this transaction. Check the account balance and try again.`                                                                                  | Check testnet asset balance and XLM for fees/reserves.                                                                                                                   |
-| `txInsufficientBalance`: ``The `from` account cannot cover the fee for this transaction.``                                                                                  | Fund the signing account with testnet XLM.                                                                                                                               |
-| 429 `RATE_LIMITED`: `Too many requests`                                                                                                                                     | Stop immediate retries and wait the `Retry-After` seconds; reduce polling and duplicate submit loops.                                                                    |
-| `txTooLate`: `The transaction's 180-second window expired before it reached the network. Prepare it again.`                                                                 | Execute expired: prepare again and sign promptly. Use the new preparation before its `expiresAt`. |
-| `txBadSeq`: ``The `from` account's sequence number moved since this envelope was prepared. Prepare it again.``                                                              | Avoid simultaneous transactions from the same customer wallet; prepare again after its other transaction finishes.                                                       |
-| `txBadAuth`: ``The envelope is not signed by the `from` account.``                                                                                                          | Reconnect the selected customer's wallet and sign with the returned passphrase.                                                                                          |
+| Failure / exact message                                                                                                                                     | What to do                                                                                                                                         |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TrustlineMissingError`: `The payout recipient has no trustline for {asset}. The recipient must add a trustline for {asset} before this flow can pay them.` | Add the recipient's trustline to the exact testnet code/issuer, then prepare again. It is normally a 422 simulation refusal, not a partial payout. |
+| `AccountMissingError`: `The account receiving {asset} doesn't exist on this network yet. Fund it with XLM first, then add a trustline for {asset}.`         | Friendbot-fund the recipient and add its line.                                                                                                     |
+| `BalanceError`: `There isn't enough {asset} to cover this transfer.`                                                                                        | Check payer/input balance, and any funded contract balance needed by the flow. Top up the correct testnet asset.                                   |
+| `Insufficient balance to cover this transaction. Check the account balance and try again.`                                                                  | Check testnet asset balance and XLM for fees/reserves.                                                                                             |
+| `txInsufficientBalance`: ``The `from` account cannot cover the fee for this transaction.``                                                                  | Fund the signing account with testnet XLM.                                                                                                         |
+| 429 `RATE_LIMITED`: `Too many requests`                                                                                                                     | Stop immediate retries and wait the `Retry-After` seconds; reduce polling and duplicate submit loops.                                              |
+| `txTooLate`: `The transaction's 180-second window expired before it reached the network. Prepare it again.`                                                 | Execute expired: prepare again and sign promptly. Use the new preparation before its `expiresAt`.                                                  |
+| `txBadSeq`: ``The `from` account's sequence number moved since this envelope was prepared. Prepare it again.``                                              | Avoid simultaneous transactions from the same customer wallet; prepare again after its other transaction finishes.                                 |
+| `txBadAuth`: ``The envelope is not signed by the `from` account.``                                                                                          | Reconnect the selected customer's wallet and sign with the returned passphrase.                                                                    |
 
 If submission returns `PENDING` or a transport/502 error, keep its signed envelope and check again. Expiry is a reason to prepare anew only once the old payment is known not to have succeeded; don't mistake an uncertain response for no payment. For any unfamiliar error, keep `x-request-id`, status, code and message for platform support, without exposing credentials.
 
@@ -605,3 +626,13 @@ App calls: prepareExecute for the client deposit → client signs → submitExec
 Graph: **On Receive USDC → Condition `time_after` at the collection deadline**. False/before → Hold; True/after → Return to owner. Customers contribute to one shared locked balance. Early release is disabled; at/after the deadline all funds go to the wallet that signed deployment so the group organiser can buy the goods. This is not automatic per-contributor refunds or a target-based success/failure pool.
 
 App calls: prepareExecute for each customer contribution → that customer's wallet signs → submitExecute → listEvents for the shared deposit history. No releaseEarly call: Hold makes it a strict lock. Wait for automatic after-side release and show its event in the feed/embed. Explain in the pitch who controls the deploying wallet and that it receives the pooled money at the deadline.
+
+# 9. Supplied deployment panels (issue #13)
+
+The starter now supplies server-only typed API helpers, an allowlisted `/api/integration` adapter, reusable deployment panels, `useWalletOperation` recovery and `useActivity` paginated event polling. See README “Deployment controls and recovery” for exact extension points, configuration and pending acceptance. Capabilities identify candidates; live state and preparation simulation establish action eligibility. Default checkout only runs on an execute-capable deployment. Dev payout UI is not enabled by discovery alone.
+
+Privileged Schedule controls, early release and the older payout endpoint require `lib/app-authorization.ts`, which denies by default. Implement trusted app session/ownership policy, per action, before enabling them. No public Webhook proxy exists: keep the secret server-only, verify logical completed tasks, persist a stable key/payload before calling `webhookReward`, and repeat that record after uncertainty.
+
+Recovery survives reload with the original intent/address/envelope/hash. Same-origin browser Web Locks serialize tabs; storage failure blocks new work. Never clear PENDING/UNKNOWN or missing evidence by wall-clock timeout. Schedule and Subscription replacements require API `replacementAllowed`; funding/public allowance use their documented durable finality/expiry protocols. Activity is paginated/deduplicated by eventId and never treated as transaction confirmation. Early release has no intent retry protocol: record uncertain attempts and request operator review.
+
+Published hosted API was checked read-only 2026-10-12 (revision 9ae4172). Live signed testnet flow acceptance remains pending exact authorized fixtures; do not describe these workflows as fully rehearsed. Schedule unsignedXdr/network normalization and public allowance intent maxTime/network normalization are documented API exceptions in README.

@@ -1,12 +1,8 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 const mockFetch = vi.fn<typeof fetch>();
-const prepared = {
-  xdr: "unsigned",
-  networkPassphrase: "Test SDF Network ; September 2015",
-  network: "testnet",
-  expiresAt: "2026-10-01T12:03:00Z",
-};
+import { fixturePrepared, fixtureTransaction } from "./transaction-fixture";
+const prepared = fixturePrepared;
 const from = `G${"A".repeat(55)}`;
 const token = `pfk_${"a".repeat(64)}`;
 const deployment = "11111111-1111-4111-8111-111111111111";
@@ -31,9 +27,10 @@ describe("typed Paiflow client (llms.md §4)", () => {
   it("prepares execute with bearer only in the upstream server request", async () => {
     mockFetch.mockResolvedValue(ok(prepared));
     const api = await import("@/lib/paiflow");
-    expect(await api.prepareExecute({ from, amount: "10000000" })).toEqual(
-      prepared,
-    );
+    expect(await api.prepareExecute({ from, amount: "10000000" })).toEqual({
+      ...prepared,
+      txHash: Buffer.from(fixtureTransaction.hash()).toString("hex"),
+    });
     const [url, options] = mockFetch.mock.calls[0]!;
     expect(String(url)).toBe(
       `http://localhost:3000/api/v1/deployments/${deployment}/execute`,

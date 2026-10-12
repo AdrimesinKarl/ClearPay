@@ -4,5 +4,11 @@ Read `llms.md` first; it is the shared, event-neutral Paiflow API and product gu
 - Never handle a customer's secret key. Freighter signs XDR in the browser, using the prepared network passphrase. Refuse mainnet.
 - Use `lib/amount.ts` for money. Amounts are decimal/stroops strings with bigint arithmetic, never floating-point numbers.
 - Keep signed envelopes for PENDING and uncertain submission errors; retry that same envelope, never duplicate a payment.
-- The payout proxy is unauthenticated. Add your app's authorisation before exposing it publicly. Add authorisation before exposing `releaseEarly`; this starter has no release route.
+- Privileged payout, early release and Schedule controls require the deny-by-default application authorizer in `lib/app-authorization.ts`. Implement trusted app session and ownership checks before enabling them.
 - Run `pnpm typecheck`, `pnpm build && pnpm test` after edits. Check `.next/static` for credential leaks.
+
+- Reusable deployment controls live in `components/deployment-panels.tsx`, with shared recovery in `lib/hooks/use-wallet-operation.ts` and pagination in `lib/hooks/use-activity.ts`. Capabilities are candidates, not live eligibility. Select nodes explicitly and refresh live state after confirmations.
+- `lib/app-authorization.ts` denies privileged actions by default. Replace it with trusted session/role/ownership checks per action; wallet consent remains separate. Never expose arbitrary upstream routes or Webhook callback payloads through an unrestricted proxy. Preserve same-origin mutation checks.
+- Persist the original prepared intent before signing and exact envelope before submit. Recovery is scoped by mode/platform/deployment and retains the consenting wallet. Never replace unknown or expired operations without documented platform proof. Preserve Web Locks and fail closed on storage errors. Never log recovery records.
+- Webhook callers persist one stable logical event key and identical payload before sending, then retry that record after PENDING/UNKNOWN. Do not add a public callback route without app authorization and verified completed-task logic.
+- Read-only hosted surface verification is recorded in `docs/staging-verification-2026-10-12.json`; live signed testnet flow acceptance is pending. Do not infer participant readiness from an OpenAPI response or pretend funds were transferred.

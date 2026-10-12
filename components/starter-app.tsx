@@ -1,66 +1,37 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import type { PublicConfig } from "@/lib/paiflow";
 import { toStroops } from "@/lib/amount";
-import { connectWallet, refreshWallet, signPrepared } from "@/lib/wallet";
-import type {
-  EventItem,
-  EventPage,
-  Prepared,
-  PublicConfig,
-  Submitted,
-} from "@/lib/paiflow";
-
-type Pending = { route: "pay" | "payout"; signedXdr: string };
-async function request<T>(path: string, body?: unknown): Promise<T> {
-  const response = await fetch(
-    path,
-    body === undefined
-      ? undefined
-      : {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        },
-  );
-  const id = response.headers.get("x-request-id");
-  const retry = response.headers.get("Retry-After");
-  let result: { data: T; error?: { code: string; message: string } };
-  try {
-    result = await response.json();
-  } catch {
-    throw new Error(
-      `HTTP ${response.status}${id ? ` · x-request-id: ${id}` : ""}. If submitted, check again.`,
-    );
-  }
-  if (!response.ok || result.error)
-    throw new Error(
-      `${result.error?.code || `HTTP ${response.status}`}: ${result.error?.message || "Request failed"}${id ? ` · x-request-id: ${id}` : ""}${retry ? ` · Retry-After: ${retry} seconds` : ""}`,
-    );
-  return result.data;
-}
+import { connectWallet, refreshWallet } from "@/lib/wallet";
+import { browserRequest } from "@/lib/browser-api";
+import { useWalletOperation } from "@/lib/hooks/use-wallet-operation";
+import { useActivity } from "@/lib/hooks/use-activity";
+import {
+  DeploymentPanels,
+  type Discovery,
+} from "@/components/deployment-panels";
 export function StarterApp({
   config,
-  payoutsAvailable = false,
+  payoutsAvailable: _payoutsAvailable = false,
 }: {
   config: PublicConfig;
   payoutsAvailable?: boolean;
 }) {
-  const integrationEnabled = config.mode === "demo" || config.mode === "team";
+  const enabled = config.mode === "demo" || config.mode === "team";
   const [address, setAddress] = useState("");
   const [amount, setAmount] = useState("1");
-  const [payoutAmount, setPayoutAmount] = useState("1");
-  const [recipient, setRecipient] = useState("");
-  const [nodeId, setNodeId] = useState("");
-  const [events, setEvents] = useState<EventItem[]>([]);
   const [error, setError] = useState("");
-  const [feedError, setFeedError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<Submitted | null>(null);
-  const [pending, setPending] = useState<Pending | null>(null);
-  const working = useRef(false);
-
+  const [discovery, setDiscovery] = useState<Discovery | null>(null);
+  const [discoveryError, setDiscoveryError] = useState("");
+  const configIdentity = JSON.stringify(config);
+  const scope = discovery
+    ? `${config.mode}:${discovery.platformOrigin}/${discovery.deploymentId}`
+    : "unconfigured";
+  const workflow = useWalletOperation(scope, enabled && !!discovery);
+  const activity = useActivity(enabled && !!discovery, scope);
   useEffect(() => {
-    if (!integrationEnabled) return;
+    if (!enabled) return;
+    setAddress("");
     const refresh = () => {
       void refreshWallet()
         .then(setAddress)
@@ -69,118 +40,35 @@ export function StarterApp({
     refresh();
     window.addEventListener("focus", refresh);
     return () => window.removeEventListener("focus", refresh);
-  }, [integrationEnabled]);
+  }, [enabled, configIdentity]);
   useEffect(() => {
-    if (!integrationEnabled) return;
+    if (!enabled) return;
     let cancelled = false;
-    let cursor: string | null = null;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let fetching = false;
-    async function poll() {
-      if (cancelled || document.hidden || fetching) return;
-      fetching = true;
-      let more = false;
-      try {
-        const page = await request<EventPage>(
-          `/api/events${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`,
-        );
-        if (cancelled) return;
-        cursor = page.nextCursor;
-        more = page.hasMore;
-        setEvents((previous) =>
-          [
-            ...new Map(
-              [...previous, ...page.items].map((item) => [item.eventId, item]),
-            ).values(),
-          ].sort(
-            (a, b) => b.ledger - a.ledger || b.eventId.localeCompare(a.eventId),
-          ),
-        );
-        setFeedError("");
-      } catch (cause) {
-        if (!cancelled)
-          setFeedError(
-            cause instanceof Error ? cause.message : "Feed unavailable",
-          );
-      } finally {
-        fetching = false;
-        if (!cancelled && !document.hidden)
-          timer = setTimeout(
-            () => {
-              void poll();
-            },
-            more ? 0 : 5000,
-          );
-      }
-    }
-    const visibility = () => {
-      clearTimeout(timer);
-      if (!document.hidden) void poll();
-    };
-    document.addEventListener("visibilitychange", visibility);
-    void poll();
+    setDiscovery(null);
+    setDiscoveryError("");
+    void browserRequest<Discovery>("/api/integration?read=capabilities")
+      .then((c) => {
+        if (!cancelled) setDiscovery(c);
+      })
+      .catch((e) => {
+        if (!cancelled) setDiscoveryError(String(e));
+      });
     return () => {
       cancelled = true;
-      clearTimeout(timer);
-      document.removeEventListener("visibilitychange", visibility);
     };
-  }, [integrationEnabled]);
-  async function wallet(connect: boolean) {
-    if (!integrationEnabled) return;
+  }, [enabled, configIdentity]);
+  async function connect() {
     try {
-      setAddress(await (connect ? connectWallet() : refreshWallet()));
+      setAddress(await connectWallet());
       setError("");
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Wallet unavailable");
+    } catch (e) {
+      setError(String(e));
     }
   }
-  async function submit(envelope: Pending) {
-    if (!integrationEnabled) return;
-    const submitted = await request<Submitted>(`/api/${envelope.route}`, {
-      signedXdr: envelope.signedXdr,
-    });
-    setResult(submitted);
-    if (submitted.status !== "PENDING") setPending(null);
-    if (submitted.status === "FAILED")
-      setError(
-        `${submitted.error?.code || "FAILED"}: ${submitted.error?.message || "Transaction failed"}`,
-      );
-  }
-  async function pay(route: "pay" | "payout", retry = false) {
-    if (!integrationEnabled || working.current) return;
-    working.current = true;
-    setBusy(true);
-    setError("");
-    try {
-      if (retry && pending) {
-        await submit(pending);
-        return;
-      }
-      if (pending)
-        throw new Error(
-          "Check the existing signed transaction before starting another payment.",
-        );
-      if (!address) throw new Error("Connect a customer wallet first.");
-      setResult(null);
-      const prepared = await request<Prepared>(`/api/${route}`, {
-        from: address,
-        amount: toStroops(route === "pay" ? amount : payoutAmount),
-        ...(route === "payout"
-          ? { recipient, ...(nodeId ? { nodeId } : {}) }
-          : {}),
-      });
-      const signedXdr = await signPrepared(prepared, address);
-      const envelope = { route, signedXdr };
-      // Keep the exact signed envelope after PENDING or transport/502 errors.
-      setPending(envelope);
-      await submit(envelope);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Payment failed");
-    } finally {
-      working.current = false;
-      setBusy(false);
-    }
-  }
+  const canPay =
+    enabled &&
+    (discovery?.operations.execute.status === "supported" ||
+      discovery?.operations.execute.status === "conditional");
   return (
     <main>
       <header>
@@ -191,13 +79,13 @@ export function StarterApp({
       </header>
       <p>
         Replace these screens with your app. Your deployed flow supplies the
-        money logic; you can integrate and test before the event.
+        money logic; integrate and test before the event.
       </p>
       {config.mode === "prepare" && (
         <aside role="status">
           Preparation mode — payments, wallet actions and the live feed are
-          disabled in this mode. Choose team mode with your deployment and API
-          token to integrate and test now, including before the event.
+          disabled. Choose team mode with your deployment and API token to
+          integrate and test.
         </aside>
       )}
       {config.mode === "disabled" && (
@@ -210,32 +98,56 @@ export function StarterApp({
           Paiflow, not back to you.
         </aside>
       )}
+      {discoveryError && (
+        <p role="alert">
+          Discovery unavailable: {discoveryError}. Confirm credentials and
+          hosted API availability before transacting.
+        </p>
+      )}
       <section aria-label="Customer wallet">
         <h2>Customer wallet</h2>
         <p className="address">{address || "No wallet connected"}</p>
         <button
-          disabled={!integrationEnabled || busy}
-          onClick={() => void wallet(true)}
+          disabled={!enabled || workflow.busy}
+          onClick={() => void connect()}
         >
           Connect Freighter
         </button>{" "}
         <button
-          disabled={!integrationEnabled || busy}
-          onClick={() => void wallet(false)}
+          disabled={!enabled || workflow.busy}
+          onClick={() =>
+            void refreshWallet()
+              .then(setAddress)
+              .catch((e) => setError(String(e)))
+          }
         >
           Refresh wallet
         </button>
         <p>
           Switch customer accounts in Freighter, then refresh. The selected
-          wallet signs its own payment.
+          wallet signs its own transaction.
         </p>
       </section>
       <section>
         <h2>Pay</h2>
+        {enabled && !canPay && (
+          <p>
+            {discovery
+              ? "This deployment does not support execute checkout. Use its funding or Subscription controls below."
+              : "Checking deployment capabilities before enabling checkout…"}
+          </p>
+        )}
         <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            void pay("pay");
+          onSubmit={(e) => {
+            e.preventDefault();
+            try {
+              void workflow.start("execute", address, {
+                from: address,
+                amount: toStroops(amount),
+              });
+            } catch (cause) {
+              setError(String(cause));
+            }
           }}
         >
           <label>
@@ -244,120 +156,72 @@ export function StarterApp({
               required
               inputMode="decimal"
               value={amount}
-              onChange={(event) => setAmount(event.target.value)}
+              onChange={(e) => setAmount(e.target.value)}
             />
           </label>
-          <button
-            disabled={!integrationEnabled || busy || !!pending || !address}
-          >
-            {busy ? "Working…" : "Pay"}
+          <button disabled={!canPay || workflow.blocked || !address}>
+            {workflow.busy ? "Working…" : "Pay"}
           </button>
         </form>
       </section>
-      {config.mode === "team" && payoutsAvailable && (
-        <details>
-          <summary>
-            Per-payment recipient (Dev mode flows with Pay → Fill value via API)
-          </summary>
-          <p>
-            Payouts must run one at a time. Do not mix them with Pay, QR
-            deposits or owner changes while a payout is in progress.
-          </p>
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              void pay("payout");
-            }}
-          >
-            <label>
-              Recipient G-address
-              <input
-                required
-                value={recipient}
-                onChange={(event) => setRecipient(event.target.value)}
-              />
-            </label>
-            <label>
-              Amount (flow input asset)
-              <input
-                required
-                inputMode="decimal"
-                value={payoutAmount}
-                onChange={(event) => setPayoutAmount(event.target.value)}
-              />
-            </label>
-            <label>
-              Pay node id (optional)
-              <input
-                value={nodeId}
-                onChange={(event) => setNodeId(event.target.value)}
-              />
-            </label>
-            <button disabled={busy || !!pending || !address}>
-              Prepare, sign and pay recipient
-            </button>
-          </form>
-          {config.deploymentUrl && (
-            <p>
-              <a href={config.deploymentUrl} target="_blank" rel="noreferrer">
-                Fill other dev values
-              </a>
-            </p>
-          )}
-        </details>
-      )}
-      {result && (
-        <p role="status">
-          {result.status} ·{" "}
-          <a
-            href={`https://stellar.expert/explorer/testnet/tx/${result.txHash}`}
-            target="_blank"
-            rel="noreferrer"
-          >
-            {result.txHash}
-          </a>
-        </p>
-      )}
+      {workflow.message && <p role="status">{workflow.message}</p>}
       {error && <p role="alert">{error}</p>}
-      {pending && (
-        <p>
-          The signed payment may still execute. Keep this tab open.{" "}
+      {workflow.recovery && (
+        <section>
+          <h2>Recover existing transaction</h2>
+          <p>
+            {workflow.recovery.operation} · Customer {workflow.recovery.address}{" "}
+            · {workflow.recovery.prepared.txHash ?? "Hash not yet returned"}
+          </p>
+          <p>
+            The original transaction may still execute. Reload recovery is saved
+            in this browser. Do not clear storage or prepare a replacement while
+            unresolved.
+          </p>
           <button
-            disabled={!integrationEnabled || busy}
-            onClick={() => void pay(pending.route, true)}
+            disabled={!enabled || workflow.busy}
+            onClick={() => void workflow.reconcile()}
           >
             Check again
           </button>
-        </p>
+        </section>
+      )}
+      {discovery && (
+        <DeploymentPanels
+          capabilities={discovery}
+          address={address}
+          blocked={workflow.blocked}
+          start={workflow.start}
+        />
       )}
       <section>
         <h2>Live feed</h2>
-        {feedError && <p role="alert">{feedError}</p>}
-        {!integrationEnabled && <p>Live feed is disabled.</p>}
-        {integrationEnabled && !events.length && (
+        {activity.error && <p role="alert">{activity.error}</p>}
+        {!enabled && <p>Live feed is disabled.</p>}
+        {enabled && !activity.events.length && (
           <p>
-            Waiting for events. Collection can lag; check submission status
+            Waiting for events. Collection can lag; check transaction status
             before paying again.
           </p>
         )}
         <ol>
-          {events.map((item) => (
-            <li key={item.eventId}>
+          {activity.events.map((e) => (
+            <li key={e.eventId}>
               <strong>
-                {item.kind}
-                {item.topic ? ` · ${item.topic}` : ""}
+                {e.kind}
+                {e.topic ? ` · ${e.topic}` : ""}
               </strong>{" "}
-              · <time dateTime={item.occurredAt}>{item.occurredAt}</time>
+              · <time dateTime={e.occurredAt}>{e.occurredAt}</time>
               <p>
                 <a
-                  href={`https://stellar.expert/explorer/testnet/tx/${item.txHash}`}
+                  href={`https://stellar.expert/explorer/testnet/tx/${e.txHash}`}
                   target="_blank"
                   rel="noreferrer"
                 >
-                  {item.txHash}
+                  {e.txHash}
                 </a>
               </p>
-              <pre>{JSON.stringify(item.data, null, 2)}</pre>
+              <pre>{JSON.stringify(e.data, null, 2)}</pre>
             </li>
           ))}
         </ol>

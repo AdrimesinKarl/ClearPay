@@ -121,8 +121,11 @@ it("allows team routes and preserves exact-envelope retries and upstream errors"
   const ok = (data: unknown) => new Response(JSON.stringify({ data }));
   fetch
     .mockResolvedValueOnce(ok({ items: [], nextCursor: null, hasMore: false }))
+    .mockResolvedValueOnce(ok({ network: "testnet" }))
     .mockResolvedValueOnce(ok({ txHash: "a".repeat(64), status: "PENDING" }))
+    .mockResolvedValueOnce(ok({ network: "testnet" }))
     .mockResolvedValueOnce(ok({ txHash: "a".repeat(64), status: "SUCCESS" }))
+    .mockResolvedValueOnce(ok({ network: "testnet" }))
     .mockResolvedValueOnce(
       new Response(
         JSON.stringify({
@@ -145,10 +148,14 @@ it("allows team routes and preserves exact-envelope retries and upstream errors"
   const confirmed = await pay(request({ signedXdr: "same-envelope" }));
   expect((await pending.json()).data.status).toBe("PENDING");
   expect((await confirmed.json()).data.status).toBe("SUCCESS");
-  expect(fetch.mock.calls[1]![1]!.body).toBe(fetch.mock.calls[2]![1]!.body);
-  const conflict = await payout(
-    request({ from, amount: "1", recipient: from }),
+  const submits = fetch.mock.calls.filter(([url]) =>
+    String(url).includes("/execute/submit"),
   );
+  expect(submits).toHaveLength(2);
+  expect(submits[0]![1]!.body).toBe(submits[1]![1]!.body);
+  const denied = await payout(request({ from, amount: "1", recipient: from }));
+  expect(denied.status).toBe(403);
+  const conflict = await pay(request({ from, amount: "1" }));
   expect(conflict.status).toBe(409);
   expect(conflict.headers.get("Retry-After")).toBe("12");
   expect(conflict.headers.get("x-request-id")).toBe("request-123");
