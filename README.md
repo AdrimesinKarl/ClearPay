@@ -31,7 +31,7 @@ Follow your event's primer and organiser instructions for onboarding, credential
 
 **Dev mode will stay disabled for the duration of the hackathon.** Configure recipients, percentages and required values before deployment. Use the ordinary Pay form with your team's standard flow. Per-payment recipients, **Fill value via API** and **Dev values** are unavailable during the event.
 
-The starter checks the deployment's capabilities server-side and shows the per-payment recipient form only when payouts are supported or conditional. If discovery fails or is unavailable, that form stays hidden; ordinary payments and the live feed remain available. `PAIFLOW_MODE=team` and `pnpm dev` do not enable flow Dev mode.
+Use the standard payment form and configured recipients. `PAIFLOW_MODE=team` and `pnpm dev` do not enable flow Dev mode.
 
 ## Prepare and integrate before the event
 
@@ -79,11 +79,9 @@ Prepare dedicated testnet wallets before integration where permitted. Ask your o
 
 - Read the [shared developer context guide](llms.md) and the [staging OpenAPI spec](https://beta.app.paiflow.xyz/api/v1/openapi.json). Idea examples are in section 8 of the guide.
 - All Paiflow calls live in `lib/paiflow.ts`; no token is sent to the browser. `lib/amount.ts` converts decimal strings to integer stroop strings with bigint (7 decimals). Freighter signs; the app never holds customer keys.
-- Execute preparations last **180 seconds**; payouts last **60 seconds**. SUCCESS is final, FAILED can be HTTP 200, and PENDING or transport/502 errors need **Check again** with the same signed envelope. Keep the tab open while uncertain; do not prepare a duplicate payment. API errors retain code/message, request id and Retry-After when supplied.
+- Execute preparations last **180 seconds**. SUCCESS is final, FAILED can be HTTP 200, and PENDING or transport/502 errors need **Check again** with the same signed envelope. Keep the tab open while uncertain; do not prepare a duplicate payment. API errors retain code/message, request id and Retry-After when supplied.
 - In demo/team modes, the feed polls every five seconds while visible, drains cursor pages and deduplicates by eventId. It can lag; lack of an event alone does not mean payment failed.
-- Outside this hackathon, where Dev mode is enabled, per-payment recipients require a Dev-mode Pay with **Fill value via API** and your team's token. Serialise payouts; do not mix execute/direct/QR deposits or owner mutations while a payout is in progress. Wait for Retry-After on 409/429. Check the target deployment’s integration capabilities before using payouts or early release.
-- **anyone who can reach this server can choose a payout recipient; add your own check before you demo publicly.** Auth is out of scope for this starter.
-- `releaseEarly` is available in the server client for your authorised server handler. It authorises a relayer release without customer signing, so you must add your app's own authorisation. There is deliberately no release route or button here. Teams cannot obtain DevApiTokens; configure other dev values in Paiflow's Dev values panel.
+- `releaseEarly` is available in the server client for your authorised server handler. It authorises a relayer release without customer signing, so you must add your app's own authorisation. There is deliberately no release route or button here.
 
 ## Checks
 
