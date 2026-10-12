@@ -38,7 +38,13 @@ async function request<T>(path: string, body?: unknown): Promise<T> {
     );
   return result.data;
 }
-export function StarterApp({ config }: { config: PublicConfig }) {
+export function StarterApp({
+  config,
+  payoutsAvailable = false,
+}: {
+  config: PublicConfig;
+  payoutsAvailable?: boolean;
+}) {
   const integrationEnabled = config.mode === "demo" || config.mode === "team";
   const [address, setAddress] = useState("");
   const [amount, setAmount] = useState("1");
@@ -248,7 +254,7 @@ export function StarterApp({ config }: { config: PublicConfig }) {
           </button>
         </form>
       </section>
-      {config.mode === "team" && (
+      {config.mode === "team" && payoutsAvailable && (
         <details>
           <summary>
             Per-payment recipient (Dev mode flows with Pay → Fill value via API)

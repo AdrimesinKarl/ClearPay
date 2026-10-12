@@ -225,6 +225,20 @@ async function call<T>(
     );
   return result.data;
 }
+// Only expose a boolean to the client; the token and raw capability response stay server-side.
+export async function payoutsAvailable(): Promise<boolean> {
+  if (requireIntegration() !== "team") return false;
+  const capabilities = await call<{
+    network?: string;
+    operations?: { payouts?: { status?: string } };
+  }>("capabilities", "GET");
+  const status = capabilities?.operations?.payouts?.status;
+  return (
+    capabilities?.network === "testnet" &&
+    (status === "supported" || status === "conditional")
+  );
+}
+
 export const prepareExecute = (input: { from: string; amount: string }) =>
   call<Prepared>("execute", "POST", input);
 export const submitExecute = (input: { signedXdr: string }, wait = true) =>

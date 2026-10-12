@@ -27,11 +27,17 @@ Use [llms.md](llms.md) as the shared Paiflow developer context guide for any eve
 
 Follow your event's primer and organiser instructions for preparation permissions, onboarding, integration start times, credentials, support, qualification, submissions and judging. Ask the organisers if information is missing. The separate [Web3 Iloilo context pack](llms-web3-iloilo.md) contains instructions for that event only; do not apply them to other events.
 
+## Hackathon feature availability
+
+**Dev mode will stay disabled for the duration of the hackathon.** Configure recipients, percentages and required values before deployment. Use the ordinary Pay form with your team's standard flow. Per-payment recipients, **Fill value via API** and **Dev values** are unavailable during the event.
+
+The starter checks the deployment's capabilities server-side and shows the per-payment recipient form only when payouts are supported or conditional. If discovery fails or is unavailable, that form stays hidden; ordinary payments and the live feed remain available. `PAIFLOW_MODE=team` and `pnpm dev` do not enable flow Dev mode.
+
 ## Preparation after onboarding
 
 Follow your event's rules for ideation, scaffolding and sandbox practice. If scaffolding is permitted after onboarding, build your app's non-payment screens and features then. If integration is reserved for an announced window, keep payment features and the live feed disabled until that window opens. Confirm when flow deployment, API integration and live payment testing are permitted, and how credentials will be provided.
 
-1. Install **Node 22** and **pnpm 10** (`corepack enable`), then run `pnpm install` and `pnpm dev`. Open http://localhost:3000. With no configuration, the starter defaults to preparation mode.
+1. Install **Node 22** and **pnpm 10** (if pnpm is already installed, skip `corepack enable`), then run `pnpm install` and `pnpm dev`. Open http://localhost:3000. With no configuration, the starter defaults to preparation mode.
 2. Prepare dedicated testnet wallets for your customer and payout recipients. Install [Freighter](https://www.freighter.app/) and select **Testnet**. Fund new accounts with testnet XLM via [Friendbot](https://laboratory.stellar.org/#account-creator?network=test). If using USDC, add the exact trustline described below and obtain testnet USDC separately.
 3. Build your non-payment screens and features in `components/starter-app.tsx`. Keep preparation mode enabled until your event's integration start.
 
@@ -51,7 +57,7 @@ Keep the mode checks in both the client screens and server-only module when exte
 
 1. Receive your team's Paiflow account credentials. Check that the customer and recipient wallets have testnet XLM, the exact USDC trustline if needed, and the required payment balances.
 2. Deploy your team's flow and wait for **CONFIRMED**. Create its API token under **API access**.
-3. Copy `.env.example` to `.env.local`. Set server-only `PAIFLOW_MODE=team`, `PAIFLOW_BASE_URL` to the supplied platform origin, `PAIFLOW_API_TOKEN` to your deployment's token and `PAIFLOW_DEPLOYMENT_ID` to its confirmed deployment UUID. Fill any required Dev values on the deployment page.
+3. Copy `.env.example` to `.env.local`. Set server-only `PAIFLOW_MODE=team`, `PAIFLOW_BASE_URL` to the supplied platform origin, `PAIFLOW_API_TOKEN` to your deployment's token and `PAIFLOW_DEPLOYMENT_ID` to its confirmed deployment UUID. Configure all required flow values before deployment; Dev mode stays disabled throughout the hackathon.
 4. Run `pnpm dev` and open http://localhost:3000. Restart the server after changing configuration. Amounts use your flow's input asset.
 5. Connect the customer wallet in Freighter and make a small test payment. Confirm **SUCCESS**, check the recipients' payout and save its transaction hash. To simulate another customer, switch accounts in Freighter and click **Refresh wallet** (window focus also refreshes).
 
@@ -75,7 +81,7 @@ Prepare dedicated testnet wallets before integration where permitted. Ask your o
 - All Paiflow calls live in `lib/paiflow.ts`; no token is sent to the browser. `lib/amount.ts` converts decimal strings to integer stroop strings with bigint (7 decimals). Freighter signs; the app never holds customer keys.
 - Execute preparations last **180 seconds**; payouts last **60 seconds**. SUCCESS is final, FAILED can be HTTP 200, and PENDING or transport/502 errors need **Check again** with the same signed envelope. Keep the tab open while uncertain; do not prepare a duplicate payment. API errors retain code/message, request id and Retry-After when supplied.
 - In demo/team modes, the feed polls every five seconds while visible, drains cursor pages and deduplicates by eventId. It can lag; lack of an event alone does not mean payment failed.
-- Per-payment recipients require a Dev-mode Pay with **Fill value via API** and your team's token. Serialise payouts; do not mix execute/direct/QR deposits or owner mutations while a payout is in progress. Wait for Retry-After on 409/429. Check the target deployment’s integration capabilities before using payouts or early release.
+- Outside this hackathon, where Dev mode is enabled, per-payment recipients require a Dev-mode Pay with **Fill value via API** and your team's token. Serialise payouts; do not mix execute/direct/QR deposits or owner mutations while a payout is in progress. Wait for Retry-After on 409/429. Check the target deployment’s integration capabilities before using payouts or early release.
 - **anyone who can reach this server can choose a payout recipient; add your own check before you demo publicly.** Auth is out of scope for this starter.
 - `releaseEarly` is available in the server client for your authorised server handler. It authorises a relayer release without customer signing, so you must add your app's own authorisation. There is deliberately no release route or button here. Teams cannot obtain DevApiTokens; configure other dev values in Paiflow's Dev values panel.
 
