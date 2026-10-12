@@ -81,7 +81,7 @@ Prepare dedicated testnet wallets before integration where permitted. Ask your o
 - All Paiflow calls live in `lib/paiflow.ts`; no token is sent to the browser. `lib/amount.ts` converts decimal strings to integer stroop strings with bigint (7 decimals). Freighter signs; the app never holds customer keys.
 - Execute preparations last **180 seconds**. SUCCESS is final, FAILED can be HTTP 200, and PENDING or transport/502 errors need **Check again** with the same signed envelope. Keep the tab open while uncertain; do not prepare a duplicate payment. API errors retain code/message, request id and Retry-After when supplied.
 - In demo/team modes, the feed polls every five seconds while visible, drains cursor pages and deduplicates by eventId. It can lag; lack of an event alone does not mean payment failed.
-- `releaseEarly` is available in the server client for your authorised server handler. It authorises a relayer release without customer signing, so you must add your app's own authorisation. There is deliberately no release route or button here. Teams cannot obtain DevApiTokens; configure other dev values in Paiflow's Dev values panel.
+- `releaseEarly` is available in the server client for your authorised server handler. It authorises a relayer release without customer signing, so you must add your app's own authorisation. There is deliberately no release route or button here.
 
 ## Checks
 
