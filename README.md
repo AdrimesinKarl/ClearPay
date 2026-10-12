@@ -25,7 +25,7 @@ The human guides and their PDFs live directly in `docs/hackathon/` in the Paiflo
 
 Use [llms.md](llms.md) as the shared Paiflow developer context guide for any event. Give it to your AI assistant alongside your event's primer or mechanics document. The guide covers product behavior, APIs, starter modes and worked examples; it does not set event dates or rules.
 
-Follow your event's primer and organiser instructions for onboarding, credentials, support, qualification, submissions and judging. Ask the organisers if information is missing. The separate [Web3 Iloilo context pack](llms-web3-iloilo.md) contains instructions for that event only; do not apply them to other events.
+Follow your event's primer and organiser instructions for onboarding, credentials, support, qualification, submissions and judging. Ask the organisers if information is missing.
 
 ## Hackathon feature availability
 
@@ -37,9 +37,32 @@ Use the standard payment form and configured recipients. `PAIFLOW_MODE=team` and
 
 You may build your app, deploy flows, integrate with Paiflow and test payments before the hackathon. Ask organisers for your team credentials in advance. Use `PAIFLOW_MODE=team` as soon as your confirmed deployment and API token are ready; `prepare` is the default mode for working without a connection. Follow your event brief for submission and qualification requirements.
 
-1. Install **Node 22** and **pnpm 10** (if pnpm is already installed, skip `corepack enable`), then run `pnpm install` and `pnpm dev`. Open http://localhost:3000. With no configuration, the starter defaults to preparation mode.
+1. Install **Node.js 22** and **pnpm 10.4.1 using npm** using the setup below, then run `pnpm install` and `pnpm dev`. Open http://localhost:3000. With no configuration, the starter defaults to preparation mode.
 2. Prepare dedicated testnet wallets for your customer and payout recipients. Install [Freighter](https://www.freighter.app/) and select **Testnet**. Fund new accounts with testnet XLM via [Friendbot](https://laboratory.stellar.org/#account-creator?network=test). If using USDC, add the exact trustline described below and obtain testnet USDC separately.
 3. Build your screens and features in `components/starter-app.tsx`. Stay in preparation mode while working without a Paiflow connection, or switch to team mode to integrate and test now.
+
+### Install Node.js and pnpm
+
+The starter's `package.json` requires Node `>=22 <23` and pins `pnpm@10.4.1`. On macOS/Linux, install [nvm](https://github.com/nvm-sh/nvm#installing-and-updating), reopen your terminal and run:
+
+```bash
+nvm install 22
+nvm use 22
+node --version
+```
+
+On Windows, select **22.x** in the [official Node.js downloads](https://nodejs.org/en/download), install it, reopen your terminal and run `node --version`. Check that the output starts with `v22.`. With nvm, use `nvm use 22` in each new terminal.
+
+From this repository's directory, install pnpm with npm, which comes with Node.js:
+
+```bash
+npm install --global pnpm@10.4.1
+pnpm --version
+pnpm install
+pnpm dev
+```
+
+Check that pnpm prints `10.4.1`. Keep the `packageManager` pin in `package.json` unchanged. Downloads need an internet connection. See the [Paiflow Guide setup instructions](https://github.com/artisam-paiflow/paiflow/blob/develop/docs/hackathon/paiflow-guide.md#run-the-starter-in-preparation-mode) for the full walkthrough.
 
 The server-only `PAIFLOW_MODE` setting controls integration:
 
