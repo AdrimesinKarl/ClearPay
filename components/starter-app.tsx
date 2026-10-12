@@ -191,13 +191,13 @@ export function StarterApp({
       </header>
       <p>
         Replace these screens with your app. Your deployed flow supplies the
-        money logic on integration day.
+        money logic; you can integrate and test before the event.
       </p>
       {config.mode === "prepare" && (
         <aside role="status">
           Preparation mode — payments, wallet actions and the live feed are
-          disabled until your event’s integration start. Build your app's
-          screens and non-payment features.
+          disabled in this mode. Choose team mode with your deployment and API
+          token to integrate and test now, including before the event.
         </aside>
       )}
       {config.mode === "disabled" && (

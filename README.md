@@ -25,7 +25,7 @@ The human guides and their PDFs live directly in `docs/hackathon/` in the Paiflo
 
 Use [llms.md](llms.md) as the shared Paiflow developer context guide for any event. Give it to your AI assistant alongside your event's primer or mechanics document. The guide covers product behavior, APIs, starter modes and worked examples; it does not set event dates or rules.
 
-Follow your event's primer and organiser instructions for preparation permissions, onboarding, integration start times, credentials, support, qualification, submissions and judging. Ask the organisers if information is missing. The separate [Web3 Iloilo context pack](llms-web3-iloilo.md) contains instructions for that event only; do not apply them to other events.
+Follow your event's primer and organiser instructions for onboarding, credentials, support, qualification, submissions and judging. Ask the organisers if information is missing. The separate [Web3 Iloilo context pack](llms-web3-iloilo.md) contains instructions for that event only; do not apply them to other events.
 
 ## Hackathon feature availability
 
@@ -33,29 +33,29 @@ Follow your event's primer and organiser instructions for preparation permission
 
 The starter checks the deployment's capabilities server-side and shows the per-payment recipient form only when payouts are supported or conditional. If discovery fails or is unavailable, that form stays hidden; ordinary payments and the live feed remain available. `PAIFLOW_MODE=team` and `pnpm dev` do not enable flow Dev mode.
 
-## Preparation after onboarding
+## Prepare and integrate before the event
 
-Follow your event's rules for ideation, scaffolding and sandbox practice. If scaffolding is permitted after onboarding, build your app's non-payment screens and features then. If integration is reserved for an announced window, keep payment features and the live feed disabled until that window opens. Confirm when flow deployment, API integration and live payment testing are permitted, and how credentials will be provided.
+You may build your app, deploy flows, integrate with Paiflow and test payments before the hackathon. Ask organisers for your team credentials in advance. Use `PAIFLOW_MODE=team` as soon as your confirmed deployment and API token are ready; `prepare` is the default mode for working without a connection. Follow your event brief for submission and qualification requirements.
 
 1. Install **Node 22** and **pnpm 10** (if pnpm is already installed, skip `corepack enable`), then run `pnpm install` and `pnpm dev`. Open http://localhost:3000. With no configuration, the starter defaults to preparation mode.
 2. Prepare dedicated testnet wallets for your customer and payout recipients. Install [Freighter](https://www.freighter.app/) and select **Testnet**. Fund new accounts with testnet XLM via [Friendbot](https://laboratory.stellar.org/#account-creator?network=test). If using USDC, add the exact trustline described below and obtain testnet USDC separately.
-3. Build your non-payment screens and features in `components/starter-app.tsx`. Keep preparation mode enabled until your event's integration start.
+3. Build your screens and features in `components/starter-app.tsx`. Stay in preparation mode while working without a Paiflow connection, or switch to team mode to integrate and test now.
 
 The server-only `PAIFLOW_MODE` setting controls integration:
 
 | Mode                           | Behaviour                                                                                                               |
 | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
 | `prepare` (default when unset) | App screens work; wallet actions, payments and event polling are disabled. No Paiflow API calls or demo-token creation. |
-| `demo`                         | Explicitly enables the shared XLM demo where available and permitted by your event.                                     |
+| `demo`                         | Explicitly enables the shared XLM demo where available; usable before the event.                                     |
 | `team`                         | Uses your team's deployment and API token. Missing or invalid configuration disables integration with a clear error.    |
 
 To set preparation mode explicitly, copy `.env.example` to `.env.local` and keep `PAIFLOW_MODE=prepare`. Existing tokens do not enable payments while preparation mode is selected. An empty token does not select demo mode. Invalid mode values disable integration. Restart the server after changing configuration.
 
 Keep the mode checks in both the client screens and server-only module when extending the starter. Direct calls to `/api/pay`, `/api/payout` and `/api/events` return HTTP 403 `PREPARATION_MODE` during preparation. A pending payment submitted before changing modes may still execute on-chain; changing mode does not cancel it. Confirm its status before switching.
 
-## Payment setup at integration start
+## Connect your deployment
 
-1. Receive your team's Paiflow account credentials. Check that the customer and recipient wallets have testnet XLM, the exact USDC trustline if needed, and the required payment balances.
+1. Obtain your team's Paiflow account credentials; request them before the event. Check that the customer and recipient wallets have testnet XLM, the exact USDC trustline if needed, and the required payment balances.
 2. Deploy your team's flow and wait for **CONFIRMED**. Create its API token under **API access**.
 3. Copy `.env.example` to `.env.local`. Set server-only `PAIFLOW_MODE=team`, `PAIFLOW_BASE_URL` to the supplied platform origin, `PAIFLOW_API_TOKEN` to your deployment's token and `PAIFLOW_DEPLOYMENT_ID` to its confirmed deployment UUID. Configure all required flow values before deployment; Dev mode stays disabled throughout the hackathon.
 4. Run `pnpm dev` and open http://localhost:3000. Restart the server after changing configuration. Amounts use your flow's input asset.
