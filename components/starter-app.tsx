@@ -1,231 +1,269 @@
 "use client";
 import { useEffect, useState } from "react";
-import type { PublicConfig } from "@/lib/paiflow";
-import { toStroops } from "@/lib/amount";
-import { connectWallet, refreshWallet } from "@/lib/wallet";
+import type { PublicConfig, Prepared, Result } from "@/lib/types";
 import { browserRequest } from "@/lib/browser-api";
-import { useWalletOperation } from "@/lib/hooks/use-wallet-operation";
-import { useActivity } from "@/lib/hooks/use-activity";
+import { connectWallet, signPrepared } from "@/lib/wallet";
+import { assertOriginal } from "@/lib/transaction";
 import {
-  DeploymentPanels,
-  type Discovery,
-} from "@/components/deployment-panels";
-export function StarterApp({
-  config,
-  payoutsAvailable: _payoutsAvailable = false,
-}: {
-  config: PublicConfig;
-  payoutsAvailable?: boolean;
-}) {
-  const enabled = config.mode === "demo" || config.mode === "team";
+  readRecovery,
+  saveRecovery,
+  terminal,
+  assertNoConflictingRecovery,
+} from "@/lib/recovery";
+import type { Recovery } from "@/lib/recovery";
+
+export function StarterApp({ config }: { config: PublicConfig }) {
   const [address, setAddress] = useState("");
-  const [amount, setAmount] = useState("1");
-  const [error, setError] = useState("");
-  const [discovery, setDiscovery] = useState<Discovery | null>(null);
-  const [discoveryError, setDiscoveryError] = useState("");
-  const configIdentity = JSON.stringify(config);
-  const scope = discovery
-    ? `${config.mode}:${discovery.platformOrigin}/${discovery.deploymentId}`
-    : "unconfigured";
-  const workflow = useWalletOperation(scope, enabled && !!discovery);
-  const activity = useActivity(enabled && !!discovery, scope);
+  const [record, setRecord] = useState<Recovery | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [blocked, setBlocked] = useState(true);
+  const key = config.ready ? `paiflow-sdk-payment-v2:${config.scope}` : "";
   useEffect(() => {
-    if (!enabled) return;
-    setAddress("");
-    const refresh = () => {
-      void refreshWallet()
-        .then(setAddress)
-        .catch(() => setAddress(""));
-    };
-    refresh();
-    window.addEventListener("focus", refresh);
-    return () => window.removeEventListener("focus", refresh);
-  }, [enabled, configIdentity]);
-  useEffect(() => {
-    if (!enabled) return;
-    let cancelled = false;
-    setDiscovery(null);
-    setDiscoveryError("");
-    void browserRequest<Discovery>("/api/integration?read=capabilities")
-      .then((c) => {
-        if (!cancelled) setDiscovery(c);
-      })
-      .catch((e) => {
-        if (!cancelled) setDiscoveryError(String(e));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [enabled, configIdentity]);
-  async function connect() {
+    if (!config.ready) return;
     try {
-      setAddress(await connectWallet());
-      setError("");
-    } catch (e) {
-      setError(String(e));
+      assertNoConflictingRecovery(localStorage, key);
+      const raw = localStorage.getItem(key);
+      if (raw) setRecord(readRecovery(config.scope, raw));
+      setBlocked(false);
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Recovery storage could not be read. Preserve it for support before starting another payment.",
+      );
+    }
+  }, [key, config]);
+  function save(r: Recovery) {
+    saveRecovery(localStorage, key, r);
+    setRecord(r);
+  }
+  async function run(action: (current: Recovery | null) => Promise<void>) {
+    if (!config.ready || busy || blocked) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      if (!navigator.locks)
+        throw new Error(
+          "This browser needs Web Locks support for safe payment recovery.",
+        );
+      await navigator.locks.request(
+        key,
+        { ifAvailable: true },
+        async (lock) => {
+          if (!lock)
+            throw new Error(
+              "Another tab is handling this deployment's payment. Return to that tab.",
+            );
+          assertNoConflictingRecovery(localStorage, key);
+          const raw = localStorage.getItem(key);
+          const current = raw ? readRecovery(config.scope, raw) : null;
+          setRecord(current);
+          await action(current);
+        },
+      );
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unresolved operation. Keep the original record.",
+      );
+    } finally {
+      setBusy(false);
     }
   }
-  const canPay =
-    enabled &&
-    (discovery?.operations.execute.status === "supported" ||
-      discovery?.operations.execute.status === "conditional");
+  async function prepare(current: Recovery | null) {
+    if (current)
+      throw new Error("Resolve the existing payment before preparing another.");
+    if (!address) throw new Error("Connect Freighter first.");
+    const prepared = await browserRequest<Prepared>("/api/pay", {
+      action: "prepare",
+      from: address,
+    });
+    if (!config.ready) return;
+    save({ version: 2, scope: config.scope, address, prepared });
+    setMessage(
+      "Prepared and saved. Review the wallet transaction before approving.",
+    );
+  }
+  async function sign(current: Recovery | null) {
+    if (!current || current.signedXdr || terminal(current)) return;
+    if (address !== current.address)
+      throw new Error("Connect the original consenting wallet.");
+    const next = { ...current, signing: true };
+    save(next);
+    const signedXdr = await signPrepared(current.prepared, current.address);
+    assertOriginal(current.prepared.xdr, signedXdr, current.prepared.txHash);
+    save({ ...next, signing: false, signedXdr });
+    setMessage("Exact signed envelope saved. Submit when ready.");
+  }
+  async function submit(current: Recovery | null) {
+    if (!current?.signedXdr || terminal(current)) return;
+    assertOriginal(
+      current.prepared.xdr,
+      current.signedXdr,
+      current.prepared.txHash,
+    );
+    const next = { ...current, attempted: true };
+    save(next);
+    const result = await browserRequest<Result>("/api/pay", {
+      action: "submit",
+      signedXdr: current.signedXdr,
+      preparationRequestId: current.prepared.preparationRequestId,
+    });
+    if (result.txHash !== current.prepared.txHash)
+      throw new Error("Response hash mismatch. Keep the original record.");
+    // A submit response alone never clears evidence. Confirm through the status route.
+    setMessage(
+      `Submission returned ${result.status}. Check the original transaction status.`,
+    );
+  }
+  async function status(current: Recovery | null) {
+    if (!current) return;
+    const result = await browserRequest<Result>("/api/pay", {
+      action: "status",
+      txHash: current.prepared.txHash,
+    });
+    if (
+      result.txHash !== current.prepared.txHash ||
+      result.network !== "testnet"
+    )
+      throw new Error("Status evidence mismatch. Retain the original record.");
+    save({ ...current, status: result.status });
+    setMessage(
+      result.status === "SUCCESS"
+        ? "Original transaction confirmed. This does not verify downstream payouts or fulfil an application order."
+        : `Original transaction: ${result.status}. UNKNOWN, rejection, expiry or missing history never prove replacement is safe.`,
+    );
+  }
+  async function clear(current: Recovery | null) {
+    if (!current || !terminal(current))
+      throw new Error(
+        "Check final SUCCESS or FAILED before clearing this record.",
+      );
+    localStorage.removeItem(key);
+    if (localStorage.getItem(key) !== null)
+      throw new Error("Could not clear stored evidence.");
+    setRecord(null);
+    setMessage(
+      "Final transaction acknowledged. A new demo payment is now possible.",
+    );
+  }
   return (
     <main>
       <header>
-        <h1>Your idea, powered by Paiflow</h1>
+        <h1>Paiflow SDK payment starter</h1>
         <span className="chip" data-testid="network-chip">
           TESTNET
         </span>
       </header>
       <p>
-        Replace these screens with your app. Your deployed flow supplies the
-        money logic; integrate and test before the event.
+        A minimal 1 XLM payment demo using the server-side Paiflow SDK and
+        Freighter. Use your own native-XLM Receive deployment. No goods or
+        orders are fulfilled by this example.
       </p>
-      {config.mode === "prepare" && (
-        <aside role="status">
-          Preparation mode — payments, wallet actions and the live feed are
-          disabled. Choose team mode with your deployment and API token to
-          integrate and test.
-        </aside>
-      )}
-      {config.mode === "disabled" && (
-        <aside role="alert">Payments unavailable: {config.message}</aside>
-      )}
-      {config.mode === "demo" && (
-        <aside>
-          Demo mode — shared deployment. Use a throwaway Friendbot wallet:
-          others can see your depositing address, and testnet XLM goes to
-          Paiflow, not back to you.
-        </aside>
-      )}
-      {discoveryError && (
-        <p role="alert">
-          Discovery unavailable: {discoveryError}. Confirm credentials and
-          hosted API availability before transacting.
+      {!config.ready ? (
+        <aside>{config.message}</aside>
+      ) : (
+        <p>
+          <a href={config.deploymentUrl} target="_blank" rel="noreferrer">
+            Review your deployment and its recipients
+          </a>
         </p>
       )}
-      <section aria-label="Customer wallet">
-        <h2>Customer wallet</h2>
-        <p className="address">{address || "No wallet connected"}</p>
+      <section>
+        <h2>1. Connect and prepare</h2>
         <button
-          disabled={!enabled || workflow.busy}
-          onClick={() => void connect()}
-        >
-          Connect Freighter
-        </button>{" "}
-        <button
-          disabled={!enabled || workflow.busy}
+          disabled={busy || !config.ready || blocked}
           onClick={() =>
-            void refreshWallet()
-              .then(setAddress)
-              .catch((e) => setError(String(e)))
+            run(async () => {
+              await browserRequest("/api/integration");
+              setAddress(await connectWallet());
+            })
           }
         >
-          Refresh wallet
+          Connect Freighter
+        </button>
+        <p>Wallet: {address || "Not connected"}</p>
+        <p>
+          Payment: 1 testnet XLM plus network fees. Review the full transaction
+          in Freighter.
+        </p>
+        <button
+          disabled={busy || blocked || !address || !!record}
+          onClick={() => run(prepare)}
+        >
+          Prepare 1 XLM payment
+        </button>
+      </section>
+      <section>
+        <h2>2. Sign and submit</h2>
+        <button
+          disabled={
+            busy || !record || !!record.signedXdr || terminal(record) || blocked
+          }
+          onClick={() => run(sign)}
+        >
+          Sign original transaction
+        </button>{" "}
+        <button
+          disabled={
+            busy ||
+            !record?.signedXdr ||
+            (!!record && terminal(record)) ||
+            blocked
+          }
+          onClick={() => run(submit)}
+        >
+          {record?.attempted
+            ? "Retry exact saved envelope"
+            : "Submit saved envelope"}
+        </button>
+      </section>
+      <section>
+        <h2>3. Verify and recover</h2>
+        <p>
+          Reloading restores the original preparation and signed envelope. Keep
+          this browser's storage until the original transaction is resolved.
+          Re-signing uses the same body; it never prepares a replacement.
+        </p>
+        {record && (
+          <>
+            <p>
+              Original transaction: <code>{record.prepared.txHash}</code>
+            </p>
+            <p>Preparation expires: {record.prepared.expiresAt}</p>
+            <p>Status: {record.status || "Not checked"}</p>
+          </>
+        )}
+        <button
+          disabled={busy || !record || blocked}
+          onClick={() => run(status)}
+        >
+          Check original transaction
+        </button>{" "}
+        <button
+          disabled={busy || !record || !terminal(record) || blocked}
+          onClick={() => run(clear)}
+        >
+          Acknowledge final result and clear
         </button>
         <p>
-          Switch customer accounts in Freighter, then refresh. The selected
-          wallet signs its own transaction.
+          Inspect the deployment's activity and recipient balances separately to
+          verify your intended payment and payout rules. Transaction
+          confirmation alone is not application payment verification.
         </p>
       </section>
-      <section>
-        <h2>Pay</h2>
-        {enabled && !canPay && (
-          <p>
-            {discovery
-              ? "This deployment does not support execute checkout. Use its funding or Subscription controls below."
-              : "Checking deployment capabilities before enabling checkout…"}
-          </p>
-        )}
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            try {
-              void workflow.start("execute", address, {
-                from: address,
-                amount: toStroops(amount),
-              });
-            } catch (cause) {
-              setError(String(cause));
-            }
-          }}
-        >
-          <label>
-            Amount (flow input asset; XLM in demo mode)
-            <input
-              required
-              inputMode="decimal"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-            />
-          </label>
-          <button disabled={!canPay || workflow.blocked || !address}>
-            {workflow.busy ? "Working…" : "Pay"}
-          </button>
-        </form>
-      </section>
-      {workflow.message && <p role="status">{workflow.message}</p>}
-      {error && <p role="alert">{error}</p>}
-      {workflow.recovery && (
-        <section>
-          <h2>Recover existing transaction</h2>
-          <p>
-            {workflow.recovery.operation} · Customer {workflow.recovery.address}{" "}
-            · {workflow.recovery.prepared.txHash ?? "Hash not yet returned"}
-          </p>
-          <p>
-            The original transaction may still execute. Reload recovery is saved
-            in this browser. Do not clear storage or prepare a replacement while
-            unresolved.
-          </p>
-          <button
-            disabled={!enabled || workflow.busy}
-            onClick={() => void workflow.reconcile()}
-          >
-            Check again
-          </button>
-        </section>
-      )}
-      {discovery && (
-        <DeploymentPanels
-          capabilities={discovery}
-          address={address}
-          blocked={workflow.blocked}
-          start={workflow.start}
-        />
-      )}
-      <section>
-        <h2>Live feed</h2>
-        {activity.error && <p role="alert">{activity.error}</p>}
-        {!enabled && <p>Live feed is disabled.</p>}
-        {enabled && !activity.events.length && (
-          <p>
-            Waiting for events. Collection can lag; check transaction status
-            before paying again.
-          </p>
-        )}
-        <ol>
-          {activity.events.map((e) => (
-            <li key={e.eventId}>
-              <strong>
-                {e.kind}
-                {e.topic ? ` · ${e.topic}` : ""}
-              </strong>{" "}
-              · <time dateTime={e.occurredAt}>{e.occurredAt}</time>
-              <p>
-                <a
-                  href={`https://stellar.expert/explorer/testnet/tx/${e.txHash}`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  {e.txHash}
-                </a>
-              </p>
-              <pre>{JSON.stringify(e.data, null, 2)}</pre>
-            </li>
-          ))}
-        </ol>
-      </section>
+      <p role="status" aria-live="polite">
+        {busy ? "Working…" : message}
+      </p>
+      <aside>
+        This local demo has no app authentication, order database, rate limit or
+        business verification. Do not deploy it as a production checkout. A
+        production application must bind prepared transactions to authorised
+        orders and keep durable server-side recovery evidence. Browser storage
+        is not a backup; deleting it loses recovery.
+      </aside>
     </main>
   );
 }

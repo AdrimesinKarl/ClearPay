@@ -5,7 +5,7 @@ import {
   getNetworkDetails,
   signTransaction,
 } from "@stellar/freighter-api";
-import type { Prepared } from "@/lib/paiflow";
+import type { Prepared } from "@/lib/types";
 export async function connectWallet() {
   const result = await requestAccess();
   if (result.error) throw new Error(result.error.message);
@@ -26,9 +26,13 @@ export async function signPrepared(prepared: Prepared, address: string) {
     throw new Error("Only Testnet payments are allowed.");
   const expires = Date.parse(prepared.expiresAt);
   if (!Number.isFinite(expires) || Date.now() >= expires)
-    throw new Error("Preparation expired. Prepare again.");
+    throw new Error(
+      "Preparation expired. Keep the original record and check its status; expiry alone does not prove it cannot execute.",
+    );
   if ((await refreshWallet()) !== address)
-    throw new Error("Wallet changed. Refresh wallet and prepare again.");
+    throw new Error(
+      "Wallet changed. Reconnect the original wallet and retain this payment record.",
+    );
   const network = await getNetworkDetails();
   if (network.error) throw new Error(network.error.message);
   if (network.networkPassphrase !== prepared.networkPassphrase)
@@ -42,7 +46,7 @@ export async function signPrepared(prepared: Prepared, address: string) {
     throw new Error("Freighter did not return a signed transaction.");
   if (signed.signerAddress !== address)
     throw new Error(
-      "Freighter signed with a different customer. Refresh wallet and prepare again.",
+      "Freighter signed with a different customer. Reconnect the original wallet and retain this payment record.",
     );
   return signed.signedTxXdr;
 }

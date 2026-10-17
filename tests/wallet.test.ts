@@ -18,6 +18,7 @@ const prepared = {
   network: "testnet" as const,
   networkPassphrase: passphrase,
   xdr: "unsigned",
+  txHash: "a".repeat(64),
   expiresAt: new Date(Date.now() + 180_000).toISOString(),
 };
 beforeEach(() => {

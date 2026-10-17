@@ -1,117 +1,79 @@
-import type { Prepared } from "@/lib/paiflow";
-
-export type Operation =
-  | "execute"
-  | "funding"
-  | "allowance"
-  | "schedule.pause"
-  | "schedule.resume"
-  | "schedule.retrieve"
-  | "subscription.cancel"
-  | "subscription.reactivate";
+import { assertOriginal, envelopeHash } from "@/lib/transaction";
+import { TESTNET } from "@/lib/types";
+import type { Prepared } from "@/lib/types";
 export type Recovery = {
-  version: 1;
+  version: 2;
   scope: string;
-  operation: Operation;
   address: string;
-  prepared: Prepared & { intent?: string; txHash?: string; action?: string };
+  prepared: Prepared;
   signedXdr?: string;
   signing?: boolean;
   attempted?: boolean;
+  status?: string;
 };
-const operations: readonly string[] = [
-  "execute",
-  "funding",
-  "allowance",
-  "schedule.pause",
-  "schedule.resume",
-  "schedule.retrieve",
-  "subscription.cancel",
-  "subscription.reactivate",
-];
-const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
-function object(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-function envelope(value: unknown): value is string {
-  return (
-    typeof value === "string" && value.length > 0 && value.length <= 200_000
-  );
-}
-/** Reject corrupted or unrelated evidence without deleting the stored record. */
 export function readRecovery(scope: string, raw: string): Recovery {
-  const invalid =
-    "Invalid recovery record; retain it for support before starting another transaction.";
-  let value: unknown;
-  try {
-    value = JSON.parse(raw);
-  } catch {
-    throw new Error(invalid);
-  }
+  const r = JSON.parse(raw) as Recovery;
   if (
-    !object(value) ||
-    value.version !== 1 ||
-    value.scope !== scope ||
-    typeof value.operation !== "string" ||
-    !operations.includes(value.operation) ||
-    typeof value.address !== "string" ||
-    !/^G[A-Z2-7]{55}$/.test(value.address) ||
-    !object(value.prepared)
+    !r ||
+    r.version !== 2 ||
+    r.scope !== scope ||
+    typeof r.address !== "string" ||
+    !/^G[A-Z2-7]{55}$/.test(r.address) ||
+    !r.prepared ||
+    r.prepared.network !== "testnet" ||
+    r.prepared.networkPassphrase !== TESTNET ||
+    !Number.isFinite(Date.parse(r.prepared.expiresAt)) ||
+    !/^[a-f0-9]{64}$/.test(r.prepared.txHash) ||
+    (r.signing !== undefined && typeof r.signing !== "boolean") ||
+    (r.attempted !== undefined && typeof r.attempted !== "boolean") ||
+    (r.status !== undefined &&
+      !["SUCCESS", "FAILED", "PENDING", "UNKNOWN", "REJECTED"].includes(
+        r.status,
+      ))
   )
-    throw new Error(invalid);
-  const p = value.prepared;
-  if (
-    !envelope(p.xdr) ||
-    p.network !== "testnet" ||
-    p.networkPassphrase !== "Test SDF Network ; September 2015" ||
-    typeof p.expiresAt !== "string" ||
-    !Number.isFinite(Date.parse(p.expiresAt)) ||
-    (value.signedXdr !== undefined && !envelope(value.signedXdr)) ||
-    (value.signing !== undefined && typeof value.signing !== "boolean") ||
-    (value.attempted !== undefined && typeof value.attempted !== "boolean") ||
-    (p.txHash !== undefined &&
-      (typeof p.txHash !== "string" || !/^[a-f0-9]{64}$/.test(p.txHash)))
-  )
-    throw new Error(invalid);
-  if (
-    value.operation !== "execute" &&
-    (typeof p.intent !== "string" ||
-      !p.intent ||
-      p.intent.length > 4096 ||
-      (value.operation !== "allowance" && !uuid.test(p.intent)))
-  )
-    throw new Error(invalid);
-  if (
-    value.operation === "funding" &&
-    p.action !== "schedule.fund" &&
-    p.action !== "webhook.fund"
-  )
-    throw new Error(invalid);
-  return value as Recovery;
-}
-/** Re-signing the identical envelope preserves its hash even after a lost wallet response. */
-export function canResumeEnvelope(record: Recovery, now = Date.now()): boolean {
-  return !record.signedXdr && now < Date.parse(record.prepared.expiresAt);
-}
-/** A queue rejection or absent RPC evidence never authorizes replacement. */
-export function replacementSafe(
-  result: { status?: string; state?: string; replacementAllowed?: boolean },
-  intent: boolean,
-): boolean {
-  if (intent)
-    return (
-      result.replacementAllowed === true &&
-      ["SUCCESS", "FAILED", "EXPIRED"].includes(result.state ?? "")
+    throw new Error(
+      "Invalid recovery record. Retain storage for support; do not start another payment.",
     );
-  return result.status === "SUCCESS" || result.status === "FAILED";
+  if (envelopeHash(r.prepared.xdr) !== r.prepared.txHash)
+    throw new Error("Stored transaction mismatch.");
+  if (r.signedXdr !== undefined)
+    assertOriginal(r.prepared.xdr, r.signedXdr, r.prepared.txHash);
+  return r;
 }
-export function recoverySettled(
-  operation: Operation,
-  result: { status?: string; state?: string; replacementAllowed?: boolean },
-): boolean {
-  if (operation === "funding")
-    return ["SUCCESS", "FAILED", "EXPIRED"].includes(result.state ?? "");
-  if (operation === "execute" || operation === "allowance")
-    return replacementSafe(result, false);
-  return replacementSafe(result, true);
+export function saveRecovery(
+  storage: Pick<Storage, "setItem" | "getItem">,
+  key: string,
+  r: Recovery,
+) {
+  const raw = JSON.stringify(r);
+  readRecovery(r.scope, raw);
+  storage.setItem(key, raw);
+  if (storage.getItem(key) !== raw)
+    throw new Error("Recovery storage unavailable. Payment stopped.");
+}
+export function terminal(r: Recovery) {
+  return r.status === "SUCCESS" || r.status === "FAILED";
+}
+
+/** Old API operations and other configured deployments must be reconciled first. */
+export function assertNoConflictingRecovery(
+  storage: Pick<Storage, "length" | "key" | "getItem">,
+  currentKey: string,
+) {
+  for (let i = 0; i < storage.length; i++) {
+    const key = storage.key(i);
+    if (!key || !storage.getItem(key)) continue;
+    if (key.startsWith("paiflow:operation:v1:"))
+      throw new Error(
+        "Legacy API payment evidence remains in this browser. Use legacy/api-2026-10-17 at the same origin to reconcile it before switching to the SDK starter. Do not delete the record.",
+      );
+    if (key.startsWith("paiflow-sdk-payment-v2:") && key !== currentKey) {
+      const foreignScope = key.slice("paiflow-sdk-payment-v2:".length);
+      const foreign = readRecovery(foreignScope, storage.getItem(key)!);
+      if (terminal(foreign)) continue;
+      throw new Error(
+        "Payment evidence for another environment or deployment remains. Restore that configuration and reconcile the original record before starting another payment.",
+      );
+    }
+  }
 }

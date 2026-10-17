@@ -1,161 +1,91 @@
-# Paiflow hackathon starter
+# Paiflow SDK payment example
 
-Paiflow is the money logic behind your app. This repo is the plumbing: replace the screens in `components/starter-app.tsx` with your idea and keep the server page wrapper in `app/page.tsx` and the guarded server-only client in `lib/paiflow.ts`. One deployment serves one business or group. Testnet only.
+A small, runnable Next.js example for integrating `@paiflow/sdk` into your own app. Connect Freighter, prepare a **1 testnet XLM** payment, sign it in the wallet, submit the original envelope, and check its transaction status. One explicitly configured Paiflow deployment supplies the payment rules.
 
-## Choose the right resource
+The SDK runs in your Node server. The browser calls your application's routes and signs with Freighter; it never receives the Paiflow credential. Copy the integration into an existing app or use this minimal example as a starting point.
 
-| Resource                                                                                                                      | Use it for                                                                                                                             |
-| ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| [Paiflow Guide](https://github.com/artisam-paiflow/paiflow/blob/develop/docs/hackathon/paiflow-guide.md)                      | Wallet setup, building and deploying a flow, and configuring the ready-wired starter.                                                  |
-| [SDK README](https://github.com/artisam-paiflow/paiflow/blob/develop/packages/sdk/README.md)                                  | Typed Node integration, examples, errors and transaction recovery for the published beta. The starter/sample uses its own HTTP client. |
-| [HTTP API README](https://github.com/artisam-paiflow/paiflow/blob/develop/docs/api/README.md)                                 | Endpoint schemas, signing, errors, recovery and advanced workflows; includes OpenAPI and Postman links.                                |
-| [OpenAPI JSON](https://github.com/artisam-paiflow/paiflow/blob/develop/docs/api/openapi.json)                                 | Machine-readable endpoint schemas.                                                                                                     |
-| [Postman collection](https://github.com/artisam-paiflow/paiflow/blob/develop/docs/api/paiflow-api-v1.postman_collection.json) | Runnable API requests for your deployment.                                                                                             |
-| [Configuration template](.env.example)                                                                                        | Server-only mode, platform origin, deployment UUID and token settings.                                                                 |
-| [Agent instructions](AGENTS.md)                                                                                               | Coding boundaries, event scope and verification commands.                                                                              |
-| [Package manifest](package.json)                                                                                              | Node.js range, package manager, dependencies and scripts.                                                                              |
-| [Server client](lib/paiflow.ts)                                                                                               | Current implementation of mode guards and Paiflow API calls.                                                                           |
-| [AI developer context](llms.md)                                                                                               | Product constraints, API details and worked examples for your AI assistant.                                                            |
+## Previous API starter
 
-Guide links above open GitHub Markdown for developers and AI assistants. The [Paiflow Guide PDF](https://drive.google.com/file/d/1abY-gT2TERr_av3eRPHjc9e8vTfkDnuY/view?usp=sharing) is the end-to-end walkthrough; use the GitHub SDK/API READMEs for detailed integration information.
+The HTTP-based starter is preserved on [`legacy/api-2026-10-17`](https://github.com/artisam-paiflow/paiflow-hackathon-starter/tree/legacy/api-2026-10-17), at commit `e20d164889e5c3230d1591dd377de769f07308ac`. That branch is the legacy reference for prepare/team/demo modes, activity polling and funding, Schedule, Subscription and payout panels. New integrations should use the SDK path on `main`. Existing clones retain their original configuration and supported backend API.
 
-Distribute only the event-specific primer and the Paiflow Guide as PDFs. The guide is event-neutral; follow your primer for event rules, registration, submission and support. Detailed SDK/API references remain on GitHub.
+This repository remains an SDK example; the custom HTTP integration path is retired. Campus Snacks remains a separate HTTP-based sample and has not been migrated by this change.
 
-## Technical guide and event instructions
+## Run locally
 
-Use [llms.md](llms.md) as the shared Paiflow developer context guide for any event. Give it to your AI assistant alongside your event's primer or mechanics document. The guide covers product behavior, APIs, starter modes and worked examples; it does not set event dates or rules.
+Requires **Node `>=22.22.2 <23`** and **pnpm `10.4.1`**.
 
-Follow your event's primer and organiser instructions for onboarding, credentials, support, qualification, submissions and judging. Ask the organisers if information is missing.
-
-## Hackathon feature availability
-
-**Dev mode will stay disabled for the duration of the hackathon.** Configure recipients, percentages and required values before deployment. Use the ordinary Pay form with your team's standard flow. Per-payment recipients, **Fill value via API** and **Dev values** are unavailable during the event.
-
-Use the standard payment form and configured recipients. `PAIFLOW_MODE=team` and `pnpm dev` do not enable flow Dev mode.
-
-## Prepare and integrate before the event
-
-You may build your app, deploy flows, integrate with Paiflow and test payments before the hackathon. Ask organisers for your team credentials in advance. Use `PAIFLOW_MODE=team` as soon as your confirmed deployment and API token are ready; `prepare` is the default mode for working without a connection. Follow your event brief for submission and qualification requirements.
-
-1. Install **Node.js 22** and **pnpm 10.4.1 using npm** using the setup below, then run `pnpm install` and `pnpm dev`. Open http://localhost:3000. With no configuration, the starter defaults to preparation mode.
-2. Prepare dedicated testnet wallets for your customer and payout recipients. Install [Freighter](https://www.freighter.app/) and select **Testnet**. Fund new accounts with testnet XLM via [Friendbot](https://laboratory.stellar.org/#account-creator?network=test). If using USDC, add the exact trustline described below and obtain testnet USDC separately.
-3. Build your screens and features in `components/starter-app.tsx`. Stay in preparation mode while working without a Paiflow connection, or switch to team mode to integrate and test now.
-
-### Install Node.js and pnpm
-
-The starter's `package.json` requires Node `>=22 <23` and pins `pnpm@10.4.1`. On macOS/Linux, install [nvm](https://github.com/nvm-sh/nvm#installing-and-updating), reopen your terminal and run:
-
-```bash
-nvm install 22
-nvm use 22
-node --version
-```
-
-On Windows, select **22.x** in the [official Node.js downloads](https://nodejs.org/en/download), install it, reopen your terminal and run `node --version`. Check that the output starts with `v22.`. With nvm, use `nvm use 22` in each new terminal.
-
-From this repository's directory, install pnpm with npm, which comes with Node.js:
-
-```bash
+```sh
+git clone https://github.com/artisam-paiflow/paiflow-hackathon-starter.git
+cd paiflow-hackathon-starter
 npm install --global pnpm@10.4.1
-pnpm --version
-pnpm install
+pnpm install --frozen-lockfile
+cp .env.example .env.local
 pnpm dev
 ```
 
-Check that pnpm prints `10.4.1`. Keep the `packageManager` pin in `package.json` unchanged. Downloads need an internet connection. See the [Paiflow Guide setup instructions](https://github.com/artisam-paiflow/paiflow/blob/develop/docs/hackathon/paiflow-guide.md#run-the-starter-in-preparation-mode) for the full walkthrough.
+Open http://localhost:3000. Without complete server configuration, payment actions remain disabled.
 
-The server-only `PAIFLOW_MODE` setting controls integration:
+The dependency is pinned to **`@paiflow/sdk@0.2.0`**, published under npm's `beta` tag. Developer tokens require a backend implementing OpenAPI `1.1.0`, including the staging environment checked on October 17, 2026.
 
-| Mode                           | Behaviour                                                                                                               |
-| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
-| `prepare` (default when unset) | App screens work; wallet actions, payments and event polling are disabled. No Paiflow API calls or demo-token creation. |
-| `demo`                         | Explicitly enables the shared XLM demo where available; usable before the event.                                        |
-| `team`                         | Uses your team's deployment and API token. Missing or invalid configuration disables integration with a clear error.    |
+## Configure your deployment
 
-To set preparation mode explicitly, copy `.env.example` to `.env.local` and keep `PAIFLOW_MODE=prepare`. Existing tokens do not enable payments while preparation mode is selected. An empty token does not select demo mode. Invalid mode values disable integration. Restart the server after changing configuration.
+1. In Paiflow, build and deploy an **On Receive (native XLM)** flow with your chosen recipients and rules. Wait for confirmation and review those rules. This app does not create or deploy flows.
+2. In **Account → Developer**, create a **Read and operate** token and explicitly grant it access to that deployment. Copy its one-time `pfd_` secret. An existing deployment-bound `pfk_` token from **API access** also works.
+3. Set these server-only values in `.env.local`, then restart:
 
-Keep the mode checks in both the client screens and server-only module when extending the starter. Direct calls to `/api/pay`, `/api/payout` and `/api/events` return HTTP 403 `PREPARATION_MODE` during preparation. A pending payment submitted before changing modes may still execute on-chain; changing mode does not cancel it. Confirm its status before switching.
-
-## Connect your deployment
-
-1. Obtain your team's Paiflow account credentials; request them before the event. Check that the customer and recipient wallets have testnet XLM, the exact USDC trustline if needed, and the required payment balances.
-2. Deploy your team's flow and wait for **CONFIRMED**. Create its API token under **API access**.
-3. Copy `.env.example` to `.env.local`. Set server-only `PAIFLOW_MODE=team`, `PAIFLOW_BASE_URL` to the supplied platform origin, `PAIFLOW_API_TOKEN` to your deployment's token and `PAIFLOW_DEPLOYMENT_ID` to its confirmed deployment UUID. Configure all required flow values before deployment; Dev mode stays disabled throughout the hackathon.
-4. Run `pnpm dev` and open http://localhost:3000. Restart the server after changing configuration. Amounts use your flow's input asset.
-5. Connect the customer wallet in Freighter and make a small test payment. Confirm **SUCCESS**, check the recipients' payout and save its transaction hash. To simulate another customer, switch accounts in Freighter and click **Refresh wallet** (window focus also refreshes).
-
-### Optional shared demo during integration
-
-Set server-only `PAIFLOW_MODE=demo` and `PAIFLOW_BASE_URL` to the supplied platform origin, then restart. The starter then uses a shared **XLM** demo. Use a throwaway Friendbot-funded testnet wallet for a small payment, then switch to your team's deployment and token. Shared-demo payments belong to the shared deployment; follow your event's qualification rules.
-
-Use demo mode for initial payment testing when your event permits it; switch to your team's token for your project. Its token is cached in server memory until two minutes before its one-hour expiry (concurrent requests share one mint). Restarting or running multiple server instances consumes more tokens. Demo minting allows only **3 tokens/hour per IP**, including shared venue Wi-Fi.
-
-**Public demo warning:** the deployment is shared, others can see your depositing address, and deposited testnet XLM goes to a Paiflow-owned account, not back to you. Use a throwaway Friendbot wallet.
-
-Prepare dedicated testnet wallets before integration where permitted. Ask your organisers whether wallet support or fallback wallets are available. Organiser-provided fallback wallets are testnet-only; organisers hold copies of their keys. Never send real (mainnet) funds to them or import them into a wallet you use for real money. Anyone with the key can take what's in them.
-
-**USDC trustlines:** a fresh Stellar wallet usually cannot hold USDC until it adds a trustline to that exact asset code and issuer. A missing recipient trustline can show `TrustlineMissingError` / `The payout recipient has no trustline for {asset}. The recipient must add a trustline for {asset} before this flow can pay them.` in simulation, surfaced as 422 `VALIDATION`; the whole payment reverts. A deploy warning does not block deployment or require acknowledgement, so successful deployment does not prove recipients are ready. In the recipient's testnet wallet, use Add asset / Add trustline for code `USDC`, issuer `GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5`, and have that wallet sign its change-trust transaction. Fund a new account with testnet XLM via Friendbot first so it exists and has reserves/fees. A trustline to another issuer's USDC will not work; native XLM needs no trustline. Check the exact trustline and required balances in every wallet, including any organiser-provided fallback wallet. Adding a trustline enables receipt, not a USDC balance: obtain testnet USDC separately, then prepare the failed payment again. Payouts checks recipient readiness before changing it; an inconclusive check also refuses mutation.
-
-**Testnet USDC funding:** after funding the wallet with XLM and adding the exact USDC trustline, open [Circle's testnet faucet](https://faucet.circle.com/), select **USDC** and **Stellar Testnet**, and enter the customer's public wallet address (`G…`). Confirm the USDC balance before testing payments. Repeat for any wallet that will fund a flow, and choose test amounts that fit the available balance. Friendbot supplies XLM, not USDC.
-
-## Extending the app
-
-- Read the [shared developer context guide](llms.md) and the [staging OpenAPI spec](https://beta.app.paiflow.xyz/api/v1/openapi.json). Idea examples are in section 8 of the guide.
-- All Paiflow calls live in `lib/paiflow.ts`; no token is sent to the browser. `lib/amount.ts` converts decimal strings to integer stroop strings with bigint (7 decimals). Freighter signs; the app never holds customer keys.
-- Execute preparations last **180 seconds**. SUCCESS is final, FAILED can be HTTP 200, and PENDING or transport/502 errors need **Check again** with the same signed envelope. Recovery survives reload in this browser; do not prepare a duplicate payment or clear stored evidence. API errors retain code/message, request id and Retry-After when supplied.
-- In demo/team modes, the feed polls every five seconds while visible, drains cursor pages and deduplicates by eventId. It can lag; lack of an event alone does not mean payment failed.
-- `releaseEarly` is available in the server client for your authorised server handler. It authorises a relayer release without customer signing, so you must add your app's own authorisation. The supplied control and allowlisted adapter require the deny-by-default application authorizer; uncertain relayer releases are retained for operator review.
-
-## Checks
-
-`pnpm typecheck`, `pnpm test`, `pnpm build`. Dependencies are Next.js/React, Freighter, server-only and the official Stellar SDK. The SDK stays server-only and decodes/hashes the original transaction using its supported parser; it avoids handwritten XDR parsing and enables recovery of legacy records without a hash. TypeScript/types, Vitest and React test renderer are development dependencies; the renderer mounts hook effects for storage/reload and visibility/backoff regression tests without adding a browser DOM library. No database, UI library or state library. Run `pnpm audit` and scan `.next/static` for `pfk_`, `PAIFLOW_API_TOKEN` and your test token before publishing.
-
-## Deployment controls and recovery
-
-Checkout remains the default example. With `PAIFLOW_MODE=team`, configure your confirmed testnet deployment and token, then connect Freighter. The starter reads capabilities on the server, selects the matching reusable panels, and uses current state and preparation simulation to establish eligibility. Select an explicit node when there are multiple candidates. Discovery is support information, not a balance, deadline or consent guarantee.
-
-- On Receive: prepare, sign with the prepared passphrase, submit, and recover the same signed checkout envelope. Swap estimates use the selected node's live quote, not a whole-flow guarantee.
-- Schedule: select the stream, refresh live state, fund its live token, and use eligible pause/resume/retrieve controls with its controller wallet. Retrieval requires the deployed policy and current eligibility.
-- Subscription: refresh the configured subscriber and allowance; only that original subscriber wallet can approve additional allowance, cancel or reactivate. Reactivation grants no allowance and does not immediately charge. One deployment has one configured subscriber.
-- Webhook: fund the live pool, then invoke the server helper after your app verifies a completed task. Funding alone never triggers rewards.
-- Time conditions: inspect held balances/freshness and early-release candidates. The platform checks live deadline/branch eligibility. Early release uses a relayer endpoint without a durable retry intent; this example records unresolved release attempts and disables automatic replacement/retry.
-
-`components/deployment-panels.tsx` exports individual Funding, Schedule, Subscription, Balances, Swap quote, Early release and Webhook setup panels with shared wallet-workflow props. These panels, `lib/hooks/use-wallet-operation.ts`, and `lib/hooks/use-activity.ts` are extension points, not a required dashboard. State reads are explicit; refresh after confirmation. All displayed monetary state uses stroop strings; form conversion uses bigint. A SUCCESS transaction is confirmation; HTTP 200, a quote, a balance, or a delayed feed animation is not.
-
-Recovery records are stored in this browser before signing and submission, scoped to mode/platform/deployment, with the consenting customer's address, prepared envelope, intent, hash and exact signed envelope. Browser Web Locks serialize operations in tabs sharing this origin. Use a secure context and a supported browser. Do not clear recovery storage while unresolved or move to another browser and initiate a replacement. Storage failure disables new operations; retain the current record for support. A pending-preparation marker is saved before requesting XDR; transport failures without a usable response keep that marker and support request ID for operator recovery rather than preparing another intent. Signed envelopes are sensitive authorization material: never log, publish or send them to analytics.
-
-Use **Check again** after reload or uncertainty. Execute preparations include the original hash before wallet signing. Older v1 records derive and persist that hash from the saved original envelope before status lookup, even if lookup subsequently fails. Execute resubmits only its original signed envelope or looks up its attributed hash; UNKNOWN/missing evidence never clears recovery. Wallet-intent flows reconcile their original intent and retain the same signed envelope. Schedule/Subscription controls require `replacementAllowed`; funding allows only durable terminal SUCCESS/FAILED/EXPIRED; public allowance status establishes finality or ledger-proven expiry. A client clock passing `expiresAt` never permits replacement. A wallet-signing interruption without a persisted signature can require operator review, because a wallet may itself broadcast. **Execute recovery limitation:** for an expired unsigned record, Check again can resolve a transaction broadcast by the wallet if the deployment-scoped API proves SUCCESS/FAILED. If the result is UNKNOWN or NOT_FOUND, keep the original record and give platform support the deployment ID, transaction hash and preparation request ID (never the signed envelope). The published execute API does not provide ledger-covered noninclusion proof; it cannot safely authorize replacement of a never-included expired preparation. A platform reconciliation capability is required to finish that case; do not reset browser storage to bypass it.
-
-Activity polling retains the earliest next-request time across tab visibility changes. Retry-After (seconds or HTTP date) takes precedence over immediate pagination; invalid values use a five-second fallback. Only one page request runs at a time.
-
-Request IDs, field errors and Retry-After remain available for diagnostics; wait the returned delay before recovery.
-
-### Application authorization
-
-Privileged controls are denied by default. Replace `applicationAuthorized` in `lib/app-authorization.ts` with your application's trusted session, role and deployment-ownership checks. Each Schedule action has its own permission. Wallet consent is separate from application authorization. The integration mutation route rejects cross-origin requests and dispatches only explicitly supported operations. No arbitrary path/body upstream proxy exists. Dev recipient payout UI is excluded from the supplied default and the older payout route also requires application authorization.
-
-### Server-side Webhook rewards
-
-Set optional server-only `PAIFLOW_WEBHOOK_SECRET` from the owner's deployment page. No example callback route is publicly exposed. In your authorized server handler, first verify the actual completed task, then persist a record keyed by that logical event in your database:
-
-```ts
-import { webhookReward, type WebhookReward } from "@/lib/paiflow";
-// Load an existing record on retry; create it durably only once per verified task.
-const record: WebhookReward = {
-  key: "completed-task-42",
-  payload: { escrow: true, amount: "10000000" },
-};
-const result = await webhookReward(record);
-// Persist result.attemptId and result.txHash. PENDING/UNKNOWN require the SAME
-// persisted record/key/payload on retry; never infer success from HTTP 202.
+```dotenv
+PAIFLOW_BASE_URL=https://beta.app.paiflow.xyz
+PAIFLOW_DEPLOYMENT_ID=<your confirmed deployment UUID>
+PAIFLOW_API_TOKEN=<your pfd_ or pfk_ token>
 ```
 
-Changed effective arguments conflict. A key never automatically expires/reopens. UNKNOWN without a hash requires operator review. An API token authorizes deployment access and must never substitute for your app's completed-task/session checks.
+Never use `NEXT_PUBLIC_` for these settings, commit `.env.local`, or put wallet secret keys into the app. The app uses the configured deployment, never the first discovery result. A developer token must explicitly include that deployment.
 
-### Readiness and testnet acceptance
+The old `PAIFLOW_MODE` and shared-demo path are no longer used. Complete credentials enable this example. Removing them disables new API actions but does not cancel an existing transaction. Retain recovery evidence when changing configuration.
 
-Keep prepare as the default: it makes no platform calls and disables wallets/payments/feed. Demo explicitly uses the shared checkout; an empty token never selects demo. Configuration failures identify missing or invalid credentials. Capability discovery refuses mainnet; wallet signing checks the current customer, testnet passphrase and finite preparation expiry. Missing account/trustline and insufficient balances are explained by preparation simulation; fund the exact testnet asset and recipient trustline before trying again. Unsupported flows have no runnable checkout. Do not replace an uncertain original transaction merely to resolve an expiry or rate-limit message.
+## Try a payment
 
-Read-only hosted verification on **2026-10-12** found healthy staging revision `9ae4172` and published funding, Schedule, Subscription, balance, quote and transaction endpoints; see `docs/staging-verification-2026-10-12.json`. The public allowance workflow is outside `/api/v1`: `/api/deployments/:id/subscription-allowance`, `/submit` and `/status?intent`. Its response omits network/expiry; the server uses live Subscription network and the platform-signed intent's transaction maxTime. The published Schedule response uses `unsignedXdr` and omits passphrase; the server only normalizes network `testnet` to its canonical passphrase. All other networks are rejected.
+1. Install Freighter. Fund a dedicated testnet customer wallet with enough XLM for the payment and transaction fees. Use testnet recipients; mainnet and non-native-XLM deployments are refused.
+2. Connect the wallet. Review your deployment and its recipients in Paiflow, then start the payment.
+3. Review and sign in Freighter. The app uses the server-prepared network passphrase, checks the wallet's network and verifies the signed transaction body against the original preparation.
+4. Check the original transaction's status. `SUCCESS` confirms that transaction. `PENDING`, `UNKNOWN`, missing history and transport errors remain unresolved.
+5. Inspect recipient payouts in Paiflow or a testnet explorer. A transaction confirmation is not an application receipt or authorization to fulfil an order.
 
-**Live signed testnet acceptance is pending:** these checks establish published surface availability, not successful transactions. Rehearse each table pattern with dedicated consenting wallets/deployments: Receive/Pay/Split/conditions/Swap; Schedule funding/pause/resume/retrieve; Subscription approve/cancel/reactivate/reapprove and wrong-wallet refusal; Webhook funding/keyed reward retry; authorized/denied early release. Also exercise reload, uncertain submission, expired intent reconciliation, multi-node selection, 429 delays and delayed events. Credentials and exact consenting fixtures are required; no funds were transferred during implementation.
+This is a fixed-amount payment demonstration, not a shop. It has no customer authentication, persistent order database or fulfilment system, and does not independently verify your intended recipients or split. Real applications need session/ownership checks, rate limits, trusted pricing, durable order-to-transaction binding and exact receipt verification.
+
+## Recover an interrupted payment
+
+The example saves the original preparation before signing and the exact signed envelope before submission. Recovery is scoped to the configured platform and deployment. Browser storage and Web Locks are required; a storage failure blocks the next financial step.
+
+After a reload, check the original hash or retry the **same signed envelope** using the recovery controls. Keep original evidence after a timeout, rejected response, `UNKNOWN`, `NOT_FOUND` or expired preparation. None proves that a replacement is safe. Do not clear browser data to start over while an operation is unresolved. If no signature is available after expiry, ask the platform operator to establish the outcome.
+
+Recovery is local to this browser and origin. Lost storage, a different machine or a lost preparation response may require operator assistance. Browser storage is teaching code, not durable cross-device payment storage. Never log or share signed envelopes or full recovery records.
+
+Existing API-starter recovery records block a new SDK payment. Resolve them using the legacy version on the same browser origin before switching. An unresolved SDK record for another platform or deployment also blocks a new payment; restore its original server configuration to reconcile it. These checks retain the old evidence rather than silently deleting or converting it.
+
+## Code map
+
+| File                           | Responsibility                                                 |
+| ------------------------------ | -------------------------------------------------------------- |
+| `lib/paiflow.ts`               | Server-only configuration and typed SDK payment calls          |
+| `app/api/pay/route.ts`         | Allowlisted preparation, submission and reconciliation actions |
+| `app/api/integration/route.ts` | Non-secret configuration state                                 |
+| `lib/wallet.ts`                | Freighter connection and signing                               |
+| `lib/recovery.ts`              | Original transaction evidence and validation                   |
+| `lib/transaction.ts`           | Transaction hashing and unchanged-envelope checks              |
+| `components/starter-app.tsx`   | Payment walkthrough and recovery controls                      |
+
+The SDK supplies transport, typed responses and API metadata. Your app supplies wallet consent, storage, authorization, reconciliation decisions and business rules.
+
+## Checks and evidence
+
+```sh
+pnpm typecheck
+pnpm test
+pnpm build
+node scripts/check-browser-bundle.mjs
+```
+
+Tests use fixtures and mocked upstream responses. They do not establish live wallet consent or payout readiness. Complete a small authorized testnet rehearsal against your deployment before demonstrating it. No fresh signed payment was made for this migration.
+
+Follow your event's primer for permissions, deadlines and submissions. The existing `llms.md` describes the preserved API starter and awaits a separate documentation review; use this README and current source for the SDK example.

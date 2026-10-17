@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 export const metadata: Metadata = {
   title: "Paiflow starter",
-  description: "Testnet checkout plumbing for your idea",
+  description: "Paiflow SDK testnet payment example",
 };
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (

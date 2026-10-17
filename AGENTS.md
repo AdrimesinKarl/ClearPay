@@ -1,14 +1,14 @@
-Read `llms.md` first; it is the shared, event-neutral Paiflow API and product guide. Early Paiflow deployment, integration and test payments are allowed once the team has credentials. Keep prepare as the default; team mode can be selected before the event. For onboarding, credentials, submission requirements and judging, follow the participant's event primer and organiser instructions. Do not infer event rules from technical examples or another event's context pack. If event information is missing, ask the organisers. This is starter code, not a supported package — edit freely.
+# SDK payment example
 
-- Call Paiflow only through server-only `lib/paiflow.ts`; keep the deployment token in server environment variables. Never use `NEXT_PUBLIC_` for configuration or return tokens to the browser.
-- Never handle a customer's secret key. Freighter signs XDR in the browser, using the prepared network passphrase. Refuse mainnet.
-- Use `lib/amount.ts` for money. Amounts are decimal/stroops strings with bigint arithmetic, never floating-point numbers.
-- Keep signed envelopes for PENDING and uncertain submission errors; retry that same envelope, never duplicate a payment.
-- Privileged payout, early release and Schedule controls require the deny-by-default application authorizer in `lib/app-authorization.ts`. Implement trusted app session and ownership checks before enabling them.
-- Run `pnpm typecheck`, `pnpm build && pnpm test` after edits. Check `.next/static` for credential leaks.
+Read `README.md` and current source first. This branch is a minimal Node SDK example. The HTTP starter is preserved on `legacy/api-2026-10-17`. The existing `llms.md` describes that legacy implementation pending a separate documentation decision; its modes, panels and client instructions do not describe this branch.
 
-- Reusable deployment controls live in `components/deployment-panels.tsx`, with shared recovery in `lib/hooks/use-wallet-operation.ts` and pagination in `lib/hooks/use-activity.ts`. Capabilities are candidates, not live eligibility. Select nodes explicitly and refresh live state after confirmations.
-- `lib/app-authorization.ts` denies privileged actions by default. Replace it with trusted session/role/ownership checks per action; wallet consent remains separate. Never expose arbitrary upstream routes or Webhook callback payloads through an unrestricted proxy. Preserve same-origin mutation checks.
-- Persist the original prepared intent before signing and exact envelope before submit. Recovery is scoped by mode/platform/deployment and retains the consenting wallet. Never replace unknown or expired operations without documented platform proof. Preserve Web Locks and fail closed on storage errors. Never log recovery records.
-- Webhook callers persist one stable logical event key and identical payload before sending, then retry that record after PENDING/UNKNOWN. Do not add a public callback route without app authorization and verified completed-task logic.
-- Read-only hosted surface verification is recorded in `docs/staging-verification-2026-10-12.json`; live signed testnet flow acceptance is pending. Do not infer participant readiness from an OpenAPI response or pretend funds were transferred.
+- Keep `@paiflow/sdk@0.2.0` runtime imports server-only. Browser type-only imports are fine. All upstream Paiflow requests go through `lib/paiflow.ts` and the SDK, not a second HTTP client.
+- Keep platform origin, deployment ID and `pfd_` or `pfk_` credentials server-side. Never use `NEXT_PUBLIC_` or expose tokens in responses, browser assets, URLs or logs.
+- Use the configured deployment. Refuse mainnet and non-native-XLM deployments. The fixed amount is 1 XLM (`"10000000"` stroops). Money uses strings and bigint, never floating-point arithmetic.
+- Never handle customer private keys. Freighter signs in the browser using the server-prepared network passphrase. Compare signed and original transaction bodies/hashes; do not accept altered operations or fee-bump envelopes.
+- Persist preparation before signing and exact signed envelope before submission. Retain original hash, scope and preparation correlation metadata. Preserve Web Locks; fail closed on storage errors. Never log recovery records.
+- Uncertain requests, `PENDING`, `UNKNOWN`, `NOT_FOUND` and expiry do not authorize replacement. Reconcile the original transaction and retry only its exact signed envelope. Never silently change deployment during recovery.
+- Preserve same-origin mutation checks and narrow request validation. Do not expose an unrestricted upstream proxy or privileged relayer controls.
+- Transaction confirmation is distinct from verified payouts and order fulfilment. Real applications need authentication, ownership checks, durable storage, rate limits, trusted pricing and receipt verification.
+- Run `pnpm typecheck`, `pnpm test`, `pnpm build` and browser credential checks. Use local fixtures; do not perform live financial tests without authorization.
+- Follow event primers for event rules. External resource links and shared AI context await a separate documentation decision.
