@@ -1,5 +1,6 @@
 "use client";
 import {
+  isConnected,
   requestAccess,
   getAddress,
   getNetworkDetails,
@@ -7,14 +8,24 @@ import {
 } from "@stellar/freighter-api";
 import type { Prepared } from "@/lib/types";
 export async function connectWallet() {
-  const result = await requestAccess();
+  await requireFreighter();
+  const result = await bounded(
+    requestAccess(),
+    60000,
+    "Freighter did not answer. Open the extension to review access, then try again.",
+  );
   if (result.error) throw new Error(result.error.message);
   if (!result.address)
     throw new Error("Install Freighter and allow this app to connect.");
   return result.address;
 }
 export async function refreshWallet() {
-  const result = await getAddress();
+  await requireFreighter();
+  const result = await bounded(
+    getAddress(),
+    5000,
+    "Freighter did not answer. Open the extension and try again.",
+  );
   if (result.error) throw new Error(result.error.message);
   return result.address;
 }
@@ -49,4 +60,28 @@ export async function signPrepared(prepared: Prepared, address: string) {
       "Freighter signed with a different customer. Reconnect the original wallet and retain this payment record.",
     );
   return signed.signedTxXdr;
+}
+
+export async function bounded<T>(
+  promise: Promise<T>,
+  ms: number,
+  message: string,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), ms);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+async function requireFreighter() {
+  const message =
+    "Install or enable Freighter at freighter.app, then reload this page to connect your testnet wallet.";
+  const result = await bounded(isConnected(), 2000, message);
+  if (result.error || !result.isConnected) throw new Error(message);
 }
