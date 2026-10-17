@@ -4,11 +4,11 @@ A small, runnable Next.js example for integrating `@paiflow/sdk` into your own a
 
 The SDK runs in your Node server. The browser calls your application's routes and signs with Freighter; it never receives the Paiflow credential. Copy the integration into an existing app or use this minimal example as a starting point.
 
-## Previous API starter
+## Choose your starting point
 
-The HTTP-based starter is preserved on [`legacy/api-2026-10-17`](https://github.com/artisam-paiflow/paiflow-hackathon-starter/tree/legacy/api-2026-10-17), at commit `e20d164889e5c3230d1591dd377de769f07308ac`. That branch is the legacy reference for prepare/team/demo modes, activity polling and funding, Schedule, Subscription and payout panels. New integrations should use the SDK path on `main`. Existing clones retain their original configuration and supported backend API.
+Use the SDK in your own app when you already have an application. Use this minimal payment example when you want a runnable reference for the prepare → sign → submit → verify → recover lifecycle. [Campus Snacks](https://github.com/artisam-paiflow/paiflow-campus-snacks) is a separate application sample for a campus ordering use case.
 
-This repository remains an SDK example; the custom HTTP integration path is retired. Campus Snacks remains a separate HTTP-based sample and has not been migrated by this change.
+For the flow-building walkthrough, use the [Paiflow Guide](https://github.com/artisam-paiflow/paiflow/blob/develop/docs/hackathon/paiflow-guide.md). For detailed integration reference, use the [SDK README](https://github.com/artisam-paiflow/paiflow/blob/develop/packages/sdk/README.md) and [API README](https://github.com/artisam-paiflow/paiflow/blob/develop/docs/api/README.md).
 
 ## Run locally
 
@@ -41,7 +41,7 @@ PAIFLOW_API_TOKEN=<your pfd_ or pfk_ token>
 
 Never use `NEXT_PUBLIC_` for these settings, commit `.env.local`, or put wallet secret keys into the app. The app uses the configured deployment, never the first discovery result. A developer token must explicitly include that deployment.
 
-The old `PAIFLOW_MODE` and shared-demo path are no longer used. Complete credentials enable this example. Removing them disables new API actions but does not cancel an existing transaction. Retain recovery evidence when changing configuration.
+Complete credentials enable this example. Removing them disables new API actions but does not cancel an existing transaction. Retain recovery evidence when changing configuration.
 
 ## Try a payment
 
@@ -61,7 +61,7 @@ After a reload, check the original hash or retry the **same signed envelope** us
 
 Recovery is local to this browser and origin. Lost storage, a different machine or a lost preparation response may require operator assistance. Browser storage is teaching code, not durable cross-device payment storage. Never log or share signed envelopes or full recovery records.
 
-Existing API-starter recovery records block a new SDK payment. Resolve them using the legacy version on the same browser origin before switching. An unresolved SDK record for another platform or deployment also blocks a new payment; restore its original server configuration to reconcile it. These checks retain the old evidence rather than silently deleting or converting it.
+An unresolved payment record for another platform or deployment blocks a new payment; restore its original server configuration to reconcile it. Recovery checks retain existing evidence rather than silently deleting or converting it.
 
 ## Code map
 
@@ -88,4 +88,4 @@ node scripts/check-browser-bundle.mjs
 
 Tests use fixtures and mocked upstream responses. They do not establish live wallet consent or payout readiness. Complete a small authorized testnet rehearsal against your deployment before demonstrating it. No fresh signed payment was made for this migration.
 
-Follow your event's primer for permissions, deadlines and submissions. The existing `llms.md` describes the preserved API starter and awaits a separate documentation review; use this README and current source for the SDK example.
+Follow your event's primer for permissions, deadlines and submissions. See [`llms.md`](llms.md) for shared Paiflow SDK integration context; use this README and current source for this runnable example.
