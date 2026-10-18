@@ -57,7 +57,9 @@ This is a fixed-amount payment demonstration, not a shop. It has no customer aut
 
 The example saves the original preparation before signing and the exact signed envelope before submission. Recovery is scoped to the configured platform and deployment. Browser storage and Web Locks are required; a storage failure blocks the next financial step.
 
-After a reload, check the original hash or retry the **same signed envelope** using the recovery controls. Keep original evidence after a timeout, rejected response, `UNKNOWN`, `NOT_FOUND` or expired preparation. None proves that a replacement is safe. Do not clear browser data to start over while an operation is unresolved. If no signature is available after expiry, ask the platform operator to establish the outcome.
+After submission, a pending response, RPC error or lost response starts **Confirmation pending—checking the original transaction**. The app makes only status lookups: at most six attempts over 30 seconds, with backoff and `Retry-After` respected. A lost submission response times out locally after 15 seconds; this does not cancel or reject the transaction. Reloading an attempted unresolved signed payment resumes one bounded check of its original hash. No automatic check prepares, signs or submits another transaction.
+
+Use **Stop checking** to stop the read-only checks, or **Check original transaction** to check again after the bounded check finishes. Both preserve the original evidence. Manual retry sends only the **same signed envelope**; it is never automatic. Keep original evidence after a timeout, rejected response, `UNKNOWN`, `NOT_FOUND` or expired preparation. None proves that a replacement is safe. Do not clear browser data to start over while an operation is unresolved. If no signature is available after expiry, ask the platform operator to establish the outcome.
 
 Recovery is local to this browser and origin. Lost storage, a different machine or a lost preparation response may require operator assistance. Browser storage is teaching code, not durable cross-device payment storage. Never log or share signed envelopes or full recovery records.
 
