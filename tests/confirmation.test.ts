@@ -50,6 +50,53 @@ it("the total deadline bounds a lookup even if its transport ignores cancellatio
   expect(lookup).toHaveBeenCalledTimes(1);
   expect(lookup.mock.calls[0]?.[0].aborted).toBe(true);
 });
+it("passes the remaining window to later lookups instead of restarting 30 seconds", async () => {
+  const lookup = vi.fn((_signal: AbortSignal, _remainingMs: number) =>
+    Promise.resolve(result("UNKNOWN")),
+  );
+  lookup.mockImplementationOnce(
+    () =>
+      new Promise((resolve) =>
+        setTimeout(() => resolve(result("UNKNOWN")), 20000),
+      ),
+  );
+  lookup.mockImplementationOnce(() => new Promise(() => {}));
+  const checking = confirmOriginal({
+    txHash: hash,
+    signal: new AbortController().signal,
+    lookup,
+    onResult: vi.fn(),
+  });
+  await vi.advanceTimersByTimeAsync(21000);
+  expect(lookup.mock.calls.map(([, remainingMs]) => remainingMs)).toEqual([
+    30000, 9000,
+  ]);
+  await vi.advanceTimersByTimeAsync(9000);
+  expect(await checking).toBe("unresolved");
+  expect(lookup).toHaveBeenCalledTimes(2);
+});
+it("does not dispatch a lookup after the deadline even when the abort timer has not fired", async () => {
+  const now = Date.now();
+  const clock = vi.spyOn(Date, "now");
+  clock
+    .mockReturnValueOnce(now)
+    .mockReturnValue(now + CONFIRMATION_DEADLINE_MS);
+  const lookup = vi.fn();
+  try {
+    expect(
+      await confirmOriginal({
+        txHash: hash,
+        signal: new AbortController().signal,
+        lookup,
+        onResult: vi.fn(),
+      }),
+    ).toBe("unresolved");
+    expect(lookup).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  } finally {
+    clock.mockRestore();
+  }
+});
 it("abort before starting makes no request and abort during backoff makes no later request", async () => {
   const controller = new AbortController();
   controller.abort();

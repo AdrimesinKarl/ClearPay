@@ -32,6 +32,15 @@ function status(value: string, hash = stored.prepared.txHash) {
 function saved() {
   return JSON.parse(values.get(key)!);
 }
+function stalledResponse(options?: RequestInit) {
+  return new Promise<Response>((_resolve, reject) => {
+    options!.signal!.addEventListener(
+      "abort",
+      () => reject(new DOMException("Response deadline", "AbortError")),
+      { once: true },
+    );
+  });
+}
 beforeEach(() => {
   renderer = undefined;
   values = new Map();
@@ -329,10 +338,118 @@ it("a lost submit response times out as ambiguous and checks the original withou
       .findAllByType("button")
       .some((b) => b.children.join("") === "Stop checking"),
   ).toBe(false);
-  await tick(15000);
+  await tick(29999);
+  expect(actions).toEqual(["submit"]);
+  expect(saved().signedXdr).toBe(stored.signedXdr);
+  await tick(1);
   expect(actions).toEqual(["submit", "status"]);
   expect(saved().status).toBe("SUCCESS");
   expect(saved().signedXdr).toBe(stored.signedXdr);
+});
+it("a 20-second submit response succeeds without an early abort or duplicate financial action", async () => {
+  values.set(key, JSON.stringify(stored));
+  const actions: string[] = [];
+  let submitSignal: AbortSignal | undefined;
+  vi.mocked(fetch).mockImplementation((_url, options) => {
+    const kind = action(options);
+    actions.push(kind);
+    if (kind === "status") return Promise.resolve(status("SUCCESS"));
+    submitSignal = options!.signal as AbortSignal;
+    expect(saved().attempted).toBe(true);
+    expect(saved().signedXdr).toBe(stored.signedXdr);
+    return new Promise<Response>((resolve, reject) => {
+      const timer = setTimeout(() => resolve(status("PENDING")), 20000);
+      submitSignal!.addEventListener(
+        "abort",
+        () => {
+          clearTimeout(timer);
+          reject(new DOMException("Response deadline", "AbortError"));
+        },
+        { once: true },
+      );
+    });
+  });
+  await mount();
+  await click("Submit saved envelope");
+  await tick(19999);
+  expect(submitSignal!.aborted).toBe(false);
+  expect(actions).toEqual(["submit"]);
+  await tick(1);
+  expect(saved().status).toBe("SUCCESS");
+  expect(actions).toEqual(["submit", "status"]);
+  expect(signPrepared).not.toHaveBeenCalled();
+});
+it("preparation stops at 30 seconds without signing, submitting or creating replacement evidence", async () => {
+  vi.mocked(connectWallet).mockResolvedValue(fixtureAddress);
+  let signal: AbortSignal | undefined;
+  vi.mocked(fetch)
+    .mockResolvedValueOnce(Response.json({ data: {} }))
+    .mockImplementation((_url, options) => {
+      expect(action(options)).toBe("prepare");
+      signal = options!.signal as AbortSignal;
+      return stalledResponse(options);
+    });
+  await mount();
+  await click("Connect Freighter");
+  await click("Prepare 1 XLM payment");
+  await tick(29999);
+  expect(signal!.aborted).toBe(false);
+  expect(button("Prepare 1 XLM payment").props.disabled).toBe(true);
+  await tick(1);
+  expect(signal!.aborted).toBe(true);
+  expect(message()).toContain("Response deadline");
+  expect(values.size).toBe(0);
+  expect(fetch).toHaveBeenCalledTimes(2); // one integration read and one preparation
+  expect(signPrepared).not.toHaveBeenCalled();
+  expect(button("Prepare 1 XLM payment").props.disabled).toBe(false);
+});
+it("manual status stops at 30 seconds and retains the exact original signed record", async () => {
+  values.set(key, JSON.stringify(stored));
+  const original = values.get(key);
+  let signal: AbortSignal | undefined;
+  vi.mocked(fetch).mockImplementation((_url, options) => {
+    expect(action(options)).toBe("status");
+    expect(JSON.parse(options!.body as string).txHash).toBe(
+      stored.prepared.txHash,
+    );
+    signal = options!.signal as AbortSignal;
+    return stalledResponse(options);
+  });
+  await mount();
+  await click("Check original transaction");
+  await tick(29999);
+  expect(signal!.aborted).toBe(false);
+  await tick(1);
+  expect(signal!.aborted).toBe(true);
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(values.get(key)).toBe(original);
+  expect(button("Check original transaction").props.disabled).toBe(false);
+});
+it("automatic confirmation gives a later stalled lookup only the remaining overall window", async () => {
+  values.set(key, JSON.stringify({ ...stored, attempted: true }));
+  const signals: AbortSignal[] = [];
+  vi.mocked(fetch).mockImplementation((_url, options) => {
+    expect(action(options)).toBe("status");
+    signals.push(options!.signal as AbortSignal);
+    if (signals.length === 1)
+      return new Promise<Response>((resolve) =>
+        setTimeout(() => resolve(status("UNKNOWN")), 20000),
+      );
+    return stalledResponse(options);
+  });
+  await mount();
+  await tick(21000);
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(saved().status).toBe("UNKNOWN");
+  await tick(8999);
+  expect(signals[1]!.aborted).toBe(false);
+  await tick(1);
+  expect(signals[1]!.aborted).toBe(true);
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(message()).toContain("Original evidence is retained");
+  expect(saved().signedXdr).toBe(stored.signedXdr);
+  expect(saved().attempted).toBe(true);
+  expect(button("Check original transaction").props.disabled).toBe(false);
 });
 it("rerendering the same scope does not restart or duplicate bounded confirmation", async () => {
   values.set(key, JSON.stringify({ ...stored, attempted: true }));

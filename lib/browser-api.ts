@@ -10,19 +10,23 @@ export class BrowserRequestError extends Error {
     this.name = "BrowserRequestError";
   }
 }
-export const RESPONSE_DEADLINE_MS = 15_000;
+export const RESPONSE_DEADLINE_MS = 30_000;
 export async function browserRequest<T>(
   path: string,
   body?: unknown,
   signal?: AbortSignal,
-  timeoutMs?: number,
+  timeoutMs = RESPONSE_DEADLINE_MS,
 ): Promise<T> {
+  if (signal?.aborted || timeoutMs <= 0)
+    throw new DOMException(
+      "Request cancelled or response deadline reached",
+      "AbortError",
+    );
   const controller = new AbortController();
   const stop = () => controller.abort();
   signal?.addEventListener("abort", stop, { once: true });
   if (signal?.aborted) stop();
-  const timer =
-    timeoutMs === undefined ? undefined : setTimeout(stop, timeoutMs);
+  const timer = setTimeout(stop, timeoutMs);
   try {
     const response = await fetch(
       path,

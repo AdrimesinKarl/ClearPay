@@ -60,28 +60,34 @@ export async function confirmOriginal({
 }: {
   txHash: string;
   signal: AbortSignal;
-  lookup: (signal: AbortSignal) => Promise<Result>;
+  lookup: (signal: AbortSignal, remainingMs: number) => Promise<Result>;
   onResult: (result: Result) => void;
 }): Promise<"final" | "rejected" | "unresolved" | "cancelled"> {
   const controller = new AbortController();
   const stop = () => controller.abort();
   signal.addEventListener("abort", stop, { once: true });
   if (signal.aborted) stop();
+  const deadlineAt = Date.now() + CONFIRMATION_DEADLINE_MS;
+  const remainingMs = () => Math.max(0, deadlineAt - Date.now());
   const timer = setTimeout(stop, CONFIRMATION_DEADLINE_MS);
   try {
     for (let attempt = 0; attempt < CONFIRMATION_MAX_ATTEMPTS; attempt++) {
-      if (controller.signal.aborted) break;
+      const lookupRemainingMs = remainingMs();
+      if (controller.signal.aborted || lookupRemainingMs <= 0) break;
       let result: Result | undefined;
       let retryAfterMs = 0;
       try {
-        result = await abortable(lookup(controller.signal), controller.signal);
+        result = await abortable(
+          lookup(controller.signal, lookupRemainingMs),
+          controller.signal,
+        );
       } catch (error) {
         if (controller.signal.aborted) break;
         if (error instanceof BrowserRequestError)
           retryAfterMs = error.retryAfterMs ?? 0;
         // Transport errors and NOT_FOUND are unresolved, not transaction failures.
       }
-      if (controller.signal.aborted) break;
+      if (controller.signal.aborted || remainingMs() <= 0) break;
       if (result) {
         assertStatus(result, txHash);
         onResult(result);
@@ -92,7 +98,7 @@ export async function confirmOriginal({
       if (attempt + 1 < CONFIRMATION_MAX_ATTEMPTS)
         await wait(
           Math.min(
-            CONFIRMATION_DEADLINE_MS,
+            remainingMs(),
             Math.max(Math.min(1000 * 2 ** attempt, 8000), retryAfterMs),
           ),
           controller.signal,

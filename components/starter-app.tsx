@@ -156,11 +156,12 @@ export function StarterApp({ config }: { config: PublicConfig }) {
     const outcome = await confirmOriginal({
       txHash: current.prepared.txHash,
       signal: op.signal,
-      lookup: (signal) =>
+      lookup: (signal, remainingMs) =>
         browserRequest<Result>(
           "/api/pay",
           { action: "status", txHash: current.prepared.txHash },
           signal,
+          remainingMs,
         ),
       onResult: (result) => {
         op.save({ ...current, status: result.status });
