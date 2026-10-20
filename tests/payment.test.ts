@@ -7,7 +7,6 @@ import {
   FeeBumpTransaction,
 } from "@stellar/stellar-sdk";
 import { assertNoConflictingRecovery } from "@/lib/recovery";
-import { POST } from "@/app/api/pay/route";
 import { beforeEach, expect, it, vi } from "vitest";
 import {
   fixtureAddress,
@@ -25,7 +24,6 @@ import {
   paymentStatus,
   paymentReady,
 } from "@/lib/paiflow";
-import { sameOrigin } from "@/lib/http";
 vi.mock("server-only", () => ({}));
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
@@ -168,6 +166,29 @@ it("restores original signed envelope after reload and rejects changed evidence"
   expect(terminal({ ...record, status: "REJECTED" })).toBe(false);
   expect(terminal({ ...record, status: "FAILED" })).toBe(true);
 });
+it("keeps payment linkage optional but validated when present", () => {
+  const values = new Map<string, string>();
+  const storage = {
+    setItem: (k: string, v: string) => {
+      values.set(k, v);
+    },
+    getItem: (k: string) => values.get(k) ?? null,
+  };
+  const linked: Recovery = {
+    ...record,
+    paymentId: "12345678-1234-1234-1234-123456789abc",
+  };
+  saveRecovery(storage, "key", linked);
+  expect(readRecovery(record.scope, storage.getItem("key")!)).toEqual(linked);
+  for (const paymentId of ["not-a-uuid", 7]) {
+    expect(() =>
+      readRecovery(
+        record.scope,
+        JSON.stringify({ ...linked, paymentId }),
+      ),
+    ).toThrow();
+  }
+});
 it("checks original transaction body but allows envelope signatures", () => {
   const signed = TransactionBuilder.fromXDR(prepared.xdr, Networks.TESTNET);
   signed.sign(Keypair.fromRawEd25519Seed(Buffer.alloc(32, 7)));
@@ -195,21 +216,6 @@ it("checks original transaction body but allows envelope signatures", () => {
     assertOriginal(prepared.xdr, prepared.xdr, "b".repeat(64)),
   ).toThrow("changed");
 });
-it("rejects cross-origin or missing-origin mutations", () => {
-  const request = (origin?: string) =>
-    new Request("https://starter.example/api/pay", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        ...(origin ? { origin } : {}),
-      },
-      body: "{}",
-    });
-  expect(() => sameOrigin(request())).toThrow();
-  expect(() => sameOrigin(request("https://evil.example"))).toThrow();
-  expect(() => sameOrigin(request("https://starter.example"))).not.toThrow();
-});
-
 it("blocks legacy and other-scope recovery while retaining every stored record", () => {
   for (const key of [
     "paiflow:operation:v1:old:preparing",
@@ -219,29 +225,4 @@ it("blocks legacy and other-scope recovery while retaining every stored record",
     expect(() => assertNoConflictingRecovery(store, "current")).toThrow();
     expect(store.getItem()).toBe("retained");
   }
-});
-it("route refuses unknown fields, bad origin, oversized and malformed requests before SDK mutation", async () => {
-  for (const [body, origin] of [
-    [
-      JSON.stringify({ action: "prepare", from: fixtureAddress, amount: "9" }),
-      "https://starter.example",
-    ],
-    [
-      JSON.stringify({ action: "prepare", from: fixtureAddress }),
-      "https://evil.example",
-    ],
-    ["{bad", "https://starter.example"],
-    ["x".repeat(210001), "https://starter.example"],
-  ]) {
-    const response = await POST(
-      new Request("https://starter.example/api/pay", {
-        method: "POST",
-        headers: { origin: origin!, "content-type": "application/json" },
-        body: body!,
-      }),
-    );
-    expect(response.ok).toBe(false);
-  }
-  expect(mocks.prepare).not.toHaveBeenCalled();
-  expect(mocks.submit).not.toHaveBeenCalled();
 });

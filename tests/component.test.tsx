@@ -1,6 +1,8 @@
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { StarterApp } from "@/components/starter-app";
+import { ClearPayApp } from "@/components/clearpay-app";
+import { StaffApp } from "@/components/staff-app";
+import { FEES, pesos } from "@/lib/fees";
 import { fixtureAddress, fixturePrepared } from "./transaction-fixture";
 import { envelopeHash } from "@/lib/transaction";
 import { connectWallet, signPrepared } from "@/lib/wallet";
@@ -11,42 +13,173 @@ vi.mock("@/lib/wallet", () => ({
 const scope =
   "https://beta.app.paiflow.xyz/12345678-1234-1234-1234-123456789abc";
 const key = `paiflow-sdk-payment-v2:${scope}`;
-const stored = {
-  version: 2,
-  scope,
-  address: fixtureAddress,
-  prepared: { ...fixturePrepared, txHash: envelopeHash(fixturePrepared.xdr) },
-  signedXdr: fixturePrepared.xdr,
+const hash = envelopeHash(fixturePrepared.xdr);
+const demoFeeCatalog = [
+  ...FEES,
+  {
+    id: "thesis-partial-payment-registrar-cccc3333",
+    group: "Thesis Partial Payment",
+    office: "Registrar",
+    label: "Thesis Partial Payment",
+    amountCentavos: 150000,
+  },
+  {
+    id: "thesis-partial-payment-department-cccc3333",
+    group: "Thesis Partial Payment",
+    office: "Department",
+    label: "Thesis Partial Payment",
+    amountCentavos: 50000,
+  },
+  {
+    id: "pre-oral-defense-registrar-aaaa1111",
+    group: "Pre-Oral Defense",
+    office: "Registrar",
+    label: "Pre-Oral Defense",
+    amountCentavos: 50000,
+  },
+  {
+    id: "pre-oral-defense-department-aaaa1111",
+    group: "Pre-Oral Defense",
+    office: "Department",
+    label: "Pre-Oral Defense",
+    amountCentavos: 6000,
+  },
+  {
+    id: "final-defense-registrar-bbbb2222",
+    group: "Final Defense",
+    office: "Registrar",
+    label: "Final Defense",
+    amountCentavos: 50000,
+  },
+  {
+    id: "final-defense-department-bbbb2222",
+    group: "Final Defense",
+    office: "Department",
+    label: "Final Defense",
+    amountCentavos: 6000,
+  },
+];
+const prepared = {
+  ...fixturePrepared,
+  expiresAt: "2999-01-01T00:00:00Z",
+  txHash: hash,
+  preparationRequestId: "preparation-evidence",
 };
+const paymentView = (overrides: Record<string, unknown> = {}) => ({
+  id: "12345678-1234-1234-1234-123456789abc",
+  studentAddress: fixtureAddress,
+  allocations: [
+    {
+      feeId: "faculty-secretary",
+      office: "Faculty Secretary",
+      label: "Records verification fee",
+      amountCentavos: 50000,
+    },
+    {
+      feeId: "registrar",
+      office: "Registrar",
+      label: "Transcript processing fee",
+      amountCentavos: 6000,
+    },
+  ],
+  totalCentavos: 56000,
+  totalDisplay: "₱560",
+  txHash: hash,
+  status: "PREPARED",
+  createdAt: "2026-10-20T00:00:00Z",
+  updatedAt: "2026-10-20T00:00:00Z",
+  ...overrides,
+});
 let renderer: ReactTestRenderer | undefined;
 let values: Map<string, string>;
-let lockAvailable = true;
-function action(options?: RequestInit) {
-  return JSON.parse(options?.body as string).action as string;
+let feesPaid = false;
+let submitCalls = 0;
+let statusCalls = 0;
+function requestAction(options?: RequestInit) {
+  if (!options?.body) return { action: "GET", body: {} as Record<string, unknown> };
+  const body = JSON.parse(options.body as string) as Record<string, unknown>;
+  return { action: String(body.action), body };
 }
-function status(value: string, hash = stored.prepared.txHash) {
-  return Response.json({
-    data: { txHash: hash, network: "testnet", status: value },
-  });
+function json(data: unknown, init?: ResponseInit) {
+  return Response.json({ data }, init);
 }
-function saved() {
-  return JSON.parse(values.get(key)!);
+function feeCatalog() {
+  return FEES.map((f) => ({ ...f, paid: feesPaid }));
 }
-function stalledResponse(options?: RequestInit) {
-  return new Promise<Response>((_resolve, reject) => {
-    options!.signal!.addEventListener(
-      "abort",
-      () => reject(new DOMException("Response deadline", "AbortError")),
-      { once: true },
-    );
-  });
+async function fetchRouter(url: RequestInfo | URL, options?: RequestInit) {
+  const target = String(url);
+  if (!options?.body) {
+    if (target.endsWith("/api/fees"))
+      return json({ ready: true, fees: FEES });
+    if (target.endsWith("/api/staff"))
+      return Response.json(
+        { error: { code: "UNAUTHENTICATED", message: "Staff sign-in required." } },
+        { status: 401 },
+      );
+    throw new Error(`Unexpected GET ${target}`);
+  }
+  const { body } = requestAction(options);
+  if (target.endsWith("/api/fees")) return json(feeCatalog());
+  if (target.endsWith("/api/payments")) {
+    if (body.action === "prepare")
+      return json({ payment: paymentView(), prepared });
+    if (body.action === "submit") {
+      submitCalls++;
+      return json({
+        payment: paymentView({ status: "SUBMITTED", txStatus: "PENDING" }),
+        result: { txHash: hash, status: "PENDING", network: "testnet" },
+      });
+    }
+    if (body.action === "status") {
+      statusCalls++;
+      return json({
+        payment: paymentView({
+          status: "CONFIRMED",
+          txStatus: "SUCCESS",
+          verifiedAt: "2026-10-20T00:05:00Z",
+        }),
+        result: { txHash: hash, status: "SUCCESS", network: "testnet" },
+      });
+    }
+  }
+  if (target.endsWith("/api/staff")) {
+    if (body.action === "login" && body.code === "campus-code-42")
+      return json(
+        { ok: true },
+        { headers: { "set-cookie": "clearpay_staff=tok; HttpOnly" } },
+      );
+    if (body.action === "login")
+      return Response.json(
+        { error: { code: "UNAUTHENTICATED", message: "Access code refused." } },
+        { status: 401 },
+      );
+    if (body.action === "logout") return json({ ok: true });
+    if (body.action === "create-demo-fees")
+      return json({ fees: demoFeeCatalog.slice(2) });
+    if (body.action === "reset-demo-data")
+      return json({
+        removedPayments: 1,
+        removedFees: 6,
+        fees: demoFeeCatalog.slice(2),
+      });
+    if (body.action === "add-fee")
+      return json({
+        fee: {
+          id: "staff-fee-1",
+          office: body.office,
+          label: body.label,
+          amountCentavos: 50000,
+        },
+      });
+  }
+  throw new Error(`Unexpected POST ${target}`);
 }
 beforeEach(() => {
   renderer = undefined;
   values = new Map();
-  lockAvailable = true;
-  vi.useFakeTimers();
-  vi.clearAllMocks();
+  feesPaid = false;
+  submitCalls = 0;
+  statusCalls = 0;
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("localStorage", {
     get length() {
@@ -64,502 +197,374 @@ beforeEach(() => {
           _key: string,
           _options: unknown,
           callback: (lock: object | null) => unknown,
-        ) => callback(lockAvailable ? {} : null),
+        ) => callback({}),
       ),
     },
   });
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () => status("UNKNOWN")),
-  );
+  vi.stubGlobal("fetch", vi.fn(fetchRouter));
 });
 afterEach(async () => {
   if (renderer) await act(() => renderer!.unmount());
-  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
-async function mount() {
-  await act(() => {
-    renderer = create(
-      <StarterApp config={{ ready: true, scope, deploymentUrl: scope }} />,
-    );
-  });
+function saved() {
+  return JSON.parse(values.get(key)!);
+}
+function buttons() {
+  return renderer!.root.findAllByType("button");
 }
 function button(label: string) {
-  return renderer!.root
-    .findAllByType("button")
-    .find((b) => b.children.join("") === label)!;
+  return buttons().find((b) => b.children.join("") === label)!;
 }
 function message() {
   return renderer!.root.findByProps({ role: "status" }).children.join("");
+}
+function treeText(node: unknown): string {
+  if (node === null || node === undefined || typeof node === "boolean")
+    return "";
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(treeText).join("");
+  const children = (node as { children?: unknown }).children;
+  return children ? treeText(children) : "";
+}
+function pageText() {
+  return treeText(renderer!.root);
+}
+async function mountStudent() {
+  await act(async () => {
+    renderer = create(
+      <ClearPayApp config={{ ready: true, scope, deploymentUrl: scope }} />,
+    );
+  });
+  await act(async () => {});
 }
 async function click(label: string) {
   await act(async () => {
     void button(label).props.onClick();
   });
+  await act(async () => {});
 }
-async function tick(ms: number) {
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(ms);
-  });
-}
-it("submit RPC timeout keeps exact signed evidence, checks UNKNOWN then SUCCESS, and never automatically resubmits or prepares", async () => {
-  values.set(key, JSON.stringify(stored));
-  let checks = 0;
-  const actions: string[] = [];
-  vi.mocked(fetch).mockImplementation(async (_url, options) => {
-    const kind = action(options);
-    actions.push(kind);
-    expect(saved().signedXdr).toBe(stored.signedXdr);
-    expect(saved().attempted).toBe(true);
-    if (kind === "submit")
-      return Response.json(
-        {
-          error: { code: "UPSTREAM_RPC", message: "Confirmation unavailable" },
-        },
-        { status: 502 },
-      );
-    expect(JSON.parse(options!.body as string).txHash).toBe(
-      stored.prepared.txHash,
-    );
-    return status(++checks === 1 ? "UNKNOWN" : "SUCCESS");
-  });
-  await mount();
-  const onClick = button("Submit saved envelope").props.onClick;
-  await act(async () => {
-    void onClick();
-    void onClick();
-  });
-  expect(message()).toContain("Confirmation pending");
-  expect(saved().status).toBe("UNKNOWN");
-  expect(button("Retry exact saved envelope").props.disabled).toBe(true);
-  await tick(1000);
-  expect(saved().status).toBe("SUCCESS");
-  expect(message()).toContain("Original transaction confirmed");
-  expect(actions).toEqual(["submit", "status", "status"]);
-  expect(button("Acknowledge final result and clear").props.disabled).toBe(
-    false,
-  );
-});
-it("reload automatically resumes only original-hash reads with the same signed evidence", async () => {
-  values.set(key, JSON.stringify({ ...stored, attempted: true }));
-  vi.mocked(fetch).mockImplementation(async (_url, options) => {
-    expect(action(options)).toBe("status");
-    expect(JSON.parse(options!.body as string).txHash).toBe(
-      stored.prepared.txHash,
-    );
-    return status("SUCCESS");
-  });
-  await mount();
-  expect(fetch).toHaveBeenCalledTimes(1);
-  expect(saved().signedXdr).toBe(stored.signedXdr);
-  expect(saved().status).toBe("SUCCESS");
-});
-it("bounded reload recovery retains UNKNOWN evidence and leaves manual original lookup available", async () => {
-  values.set(key, JSON.stringify({ ...stored, attempted: true }));
-  await mount();
-  await tick(30000);
-  expect(fetch).toHaveBeenCalledTimes(6);
-  expect(saved().status).toBe("UNKNOWN");
-  expect(message()).toContain("Use Check original transaction to resume");
-  expect(button("Check original transaction").props.disabled).toBe(false);
-  expect(button("Acknowledge final result and clear").props.disabled).toBe(
-    true,
-  );
-  vi.mocked(fetch).mockResolvedValue(status("SUCCESS"));
-  await click("Check original transaction");
-  expect(saved().status).toBe("SUCCESS");
-});
-it("Stop checking aborts only recovery reads and ignores their late SUCCESS response", async () => {
-  values.set(key, JSON.stringify({ ...stored, attempted: true }));
-  let resolve!: (response: Response) => void;
-  let signal: AbortSignal | undefined;
-  vi.mocked(fetch).mockImplementation((_url, options) => {
-    expect(action(options)).toBe("status");
-    signal = options!.signal as AbortSignal;
-    return new Promise<Response>((r) => {
-      resolve = r;
-    });
-  });
-  await mount();
-  await click("Stop checking");
-  expect(signal!.aborted).toBe(true);
-  await act(async () => {
-    resolve(status("SUCCESS"));
-  });
-  expect(saved().status).toBeUndefined();
-  expect(message()).toContain("Original evidence is retained");
-  expect(button("Check original transaction").props.disabled).toBe(false);
-});
-it("scope change aborts a pending lookup and prevents late writes or success UI in another deployment", async () => {
-  values.set(key, JSON.stringify({ ...stored, attempted: true }));
-  const original = values.get(key);
-  let resolve!: (response: Response) => void;
-  vi.mocked(fetch).mockImplementation(
-    () =>
-      new Promise<Response>((r) => {
-        resolve = r;
-      }),
-  );
-  await mount();
-  await act(() =>
-    renderer!.update(
-      <StarterApp
-        config={{
-          ready: true,
-          scope: scope + "-other",
-          deploymentUrl: scope + "-other",
-        }}
-      />,
-    ),
-  );
-  await act(async () => {
-    resolve(status("SUCCESS"));
-  });
-  expect(values.get(key)).toBe(original);
-  expect(values.has(key + "-other")).toBe(false);
-  expect(message()).not.toContain("Original transaction confirmed");
-  expect(button("Prepare 1 XLM payment").props.disabled).toBe(true);
-});
-it("unmount aborts original lookups and late responses cannot persist confirmation", async () => {
-  values.set(key, JSON.stringify({ ...stored, attempted: true }));
-  const original = values.get(key);
-  let resolve!: (response: Response) => void;
-  let signal: AbortSignal | undefined;
-  vi.mocked(fetch).mockImplementation((_url, options) => {
-    signal = options!.signal as AbortSignal;
-    return new Promise<Response>((r) => {
-      resolve = r;
-    });
-  });
-  await mount();
-  await act(() => renderer!.unmount());
-  renderer = undefined;
-  expect(signal!.aborted).toBe(true);
-  await act(async () => {
-    resolve(status("SUCCESS"));
-  });
-  expect(values.get(key)).toBe(original);
-});
-it("explicit REJECTED response is retained as nonfinal without automatic retry or replacement", async () => {
-  values.set(key, JSON.stringify(stored));
-  vi.mocked(fetch).mockResolvedValue(status("REJECTED"));
-  await mount();
-  await click("Submit saved envelope");
-  expect(fetch).toHaveBeenCalledTimes(1);
-  expect(saved().status).toBe("REJECTED");
-  expect(saved().signedXdr).toBe(stored.signedXdr);
-  expect(button("Acknowledge final result and clear").props.disabled).toBe(
-    true,
-  );
-  expect(button("Check original transaction").props.disabled).toBe(false);
-});
-it("validation refusal is shown without starting automatic confirmation calls", async () => {
-  values.set(key, JSON.stringify(stored));
-  vi.mocked(fetch).mockResolvedValue(
-    Response.json(
-      { error: { code: "VALIDATION", message: "Invalid envelope" } },
-      { status: 422 },
-    ),
-  );
-  await mount();
-  await click("Submit saved envelope");
-  expect(fetch).toHaveBeenCalledTimes(1);
-  expect(message()).toContain("VALIDATION");
-  expect(saved().signedXdr).toBe(stored.signedXdr);
-  expect(button("Acknowledge final result and clear").props.disabled).toBe(
-    true,
-  );
-});
-it("wallet cancellation leaves the original unsigned preparation and performs no submit or automatic lookup", async () => {
-  values.set(key, JSON.stringify({ ...stored, signedXdr: undefined }));
-  vi.mocked(fetch).mockResolvedValue(Response.json({ data: {} }));
+it("shows fees, computes the ₱560 checkout total, and never sends totals from the browser", async () => {
   vi.mocked(connectWallet).mockResolvedValue(fixtureAddress);
-  vi.mocked(signPrepared).mockRejectedValue(
-    new Error("Wallet request cancelled"),
-  );
-  await mount();
+  const bodies: Array<Record<string, unknown>> = [];
+  vi.mocked(fetch).mockImplementation(async (url, options) => {
+    if (options?.body) bodies.push(JSON.parse(options.body as string));
+    return fetchRouter(url, options);
+  });
+  await mountStudent();
+  expect(pageText()).toContain("Faculty Secretary");
+  expect(pageText()).toContain("Registrar");
+  expect(pageText()).toContain("₱500");
+  expect(pageText()).toContain("₱60");
+  const checkboxes = renderer!.root.findAllByType("input");
+  expect(checkboxes).toHaveLength(2);
+  await act(async () => {
+    checkboxes[0]!.props.onChange();
+  });
+  await act(async () => {
+    checkboxes[1]!.props.onChange();
+  });
+  const total = renderer!.root.findByProps({ "data-testid": "checkout-total" });
+  expect(total.children.join("")).toBe("₱560");
+  expect(pesos(56000)).toBe("₱560");
   await click("Connect Freighter");
+  await click("Pay selected fees · 1 testnet XLM");
+  const prepareBody = bodies.find((b) => b.action === "prepare");
+  expect(prepareBody).toEqual({
+    action: "prepare",
+    from: fixtureAddress,
+    feeIds: expect.arrayContaining(["faculty-secretary", "registrar"]),
+  });
+  expect(JSON.stringify(prepareBody)).not.toContain("56000");
+  expect(saved().paymentId).toBe("12345678-1234-1234-1234-123456789abc");
+  expect(saved().prepared.txHash).toBe(hash);
+});
+it("signs and submits the exact envelope, then shows the verified receipt only after Paiflow SUCCESS", async () => {
+  vi.mocked(connectWallet).mockResolvedValue(fixtureAddress);
+  vi.mocked(signPrepared).mockResolvedValue(prepared.xdr);
+  let feesPosts = 0;
+  vi.mocked(fetch).mockImplementation(async (url, options) => {
+    if (options?.body && String(url).endsWith("/api/fees")) feesPosts++;
+    return fetchRouter(url, options);
+  });
+  await mountStudent();
+  for (const box of renderer!.root.findAllByType("input")) {
+    await act(async () => {
+      box.props.onChange();
+    });
+  }
+  await click("Connect Freighter");
+  await click("Pay selected fees · 1 testnet XLM");
   await click("Sign original transaction");
-  expect(message()).toContain("Wallet request cancelled");
-  expect(saved().signedXdr).toBeUndefined();
-  expect(saved().attempted).toBeUndefined();
-  expect(fetch).toHaveBeenCalledTimes(1); // integration readiness, not payment submit/status
-});
-it("another tab owning the Web Lock prevents submit and preserves evidence", async () => {
-  values.set(key, JSON.stringify(stored));
-  await mount();
-  lockAvailable = false;
+  expect(saved().signedXdr).toBe(prepared.xdr);
   await click("Submit saved envelope");
-  expect(fetch).not.toHaveBeenCalled();
-  expect(values.get(key)).toBe(JSON.stringify(stored));
-});
-it("unreadable storage blocks all new payments instead of discarding evidence", async () => {
-  values.set(key, "corrupt recovery");
-  await mount();
-  expect(button("Connect Freighter").props.disabled).toBe(true);
-  expect(fetch).not.toHaveBeenCalled();
-  expect(values.get(key)).toBe("corrupt recovery");
-});
-it("storage write failure prevents submission", async () => {
-  values.set(key, JSON.stringify(stored));
-  await mount();
-  vi.stubGlobal("localStorage", {
-    length: 1,
-    key: () => key,
-    getItem: () => JSON.stringify(stored),
-    setItem: () => {
-      throw new Error("quota");
-    },
-  });
-  await click("Submit saved envelope");
-  expect(fetch).not.toHaveBeenCalled();
-});
-it("a lost submit response times out as ambiguous and checks the original without another financial request", async () => {
-  values.set(key, JSON.stringify(stored));
-  const actions: string[] = [];
-  vi.mocked(fetch).mockImplementation((_url, options) => {
-    const kind = action(options);
-    actions.push(kind);
-    if (kind === "status") return Promise.resolve(status("SUCCESS"));
-    return new Promise<Response>((_resolve, reject) => {
-      options!.signal!.addEventListener(
-        "abort",
-        () => reject(new DOMException("Response lost", "AbortError")),
-        { once: true },
-      );
-    });
-  });
-  await mount();
-  await click("Submit saved envelope");
+  expect(submitCalls).toBe(1);
   expect(saved().attempted).toBe(true);
-  expect(
-    renderer!.root
-      .findAllByType("button")
-      .some((b) => b.children.join("") === "Stop checking"),
-  ).toBe(false);
-  await tick(29999);
-  expect(actions).toEqual(["submit"]);
-  expect(saved().signedXdr).toBe(stored.signedXdr);
-  await tick(1);
-  expect(actions).toEqual(["submit", "status"]);
-  expect(saved().status).toBe("SUCCESS");
-  expect(saved().signedXdr).toBe(stored.signedXdr);
+  expect(statusCalls).toBeGreaterThanOrEqual(1);
+  expect(message()).toContain("verified with Paiflow");
+  const receipt = renderer!.root.findByProps({ "data-testid": "receipt" });
+  expect(receipt).toBeDefined();
+  expect(renderer!.root.findByProps({ "data-testid": "verified-badge" })).toBeDefined();
+  expect(pageText()).toContain(hash);
+  expect(pageText()).toContain("₱560");
+  // Confirmation refreshed fee status from the server and shows Paid badges.
+  feesPaid = true;
+  await click("Check transaction");
+  await act(async () => {});
+  expect(feesPosts).toBeGreaterThanOrEqual(3);
+  const badges = renderer!.root
+    .findAllByType("span")
+    .filter((s) => s.children.join("") === "Paid");
+  expect(badges.length).toBe(2);
 });
-it("a 20-second submit response succeeds without an early abort or duplicate financial action", async () => {
-  values.set(key, JSON.stringify(stored));
-  const actions: string[] = [];
-  let submitSignal: AbortSignal | undefined;
-  vi.mocked(fetch).mockImplementation((_url, options) => {
-    const kind = action(options);
-    actions.push(kind);
-    if (kind === "status") return Promise.resolve(status("SUCCESS"));
-    submitSignal = options!.signal as AbortSignal;
-    expect(saved().attempted).toBe(true);
-    expect(saved().signedXdr).toBe(stored.signedXdr);
-    return new Promise<Response>((resolve, reject) => {
-      const timer = setTimeout(() => resolve(status("PENDING")), 20000);
-      submitSignal!.addEventListener(
-        "abort",
-        () => {
-          clearTimeout(timer);
-          reject(new DOMException("Response deadline", "AbortError"));
-        },
-        { once: true },
-      );
-    });
-  });
-  await mount();
-  await click("Submit saved envelope");
-  await tick(19999);
-  expect(submitSignal!.aborted).toBe(false);
-  expect(actions).toEqual(["submit"]);
-  await tick(1);
-  expect(saved().status).toBe("SUCCESS");
-  expect(actions).toEqual(["submit", "status"]);
-  expect(signPrepared).not.toHaveBeenCalled();
-});
-it("preparation stops at 30 seconds without signing, submitting or creating replacement evidence", async () => {
-  vi.mocked(connectWallet).mockResolvedValue(fixtureAddress);
-  let signal: AbortSignal | undefined;
-  vi.mocked(fetch)
-    .mockResolvedValueOnce(Response.json({ data: {} }))
-    .mockImplementation((_url, options) => {
-      expect(action(options)).toBe("prepare");
-      signal = options!.signal as AbortSignal;
-      return stalledResponse(options);
-    });
-  await mount();
-  await click("Connect Freighter");
-  await click("Prepare 1 XLM payment");
-  await tick(29999);
-  expect(signal!.aborted).toBe(false);
-  expect(button("Prepare 1 XLM payment").props.disabled).toBe(true);
-  await tick(1);
-  expect(signal!.aborted).toBe(true);
-  expect(message()).toContain("Response deadline");
-  expect(values.size).toBe(0);
-  expect(fetch).toHaveBeenCalledTimes(2); // one integration read and one preparation
-  expect(signPrepared).not.toHaveBeenCalled();
-  expect(button("Prepare 1 XLM payment").props.disabled).toBe(false);
-});
-it("manual status stops at 30 seconds and retains the exact original signed record", async () => {
-  values.set(key, JSON.stringify(stored));
-  const original = values.get(key);
-  let signal: AbortSignal | undefined;
-  vi.mocked(fetch).mockImplementation((_url, options) => {
-    expect(action(options)).toBe("status");
-    expect(JSON.parse(options!.body as string).txHash).toBe(
-      stored.prepared.txHash,
-    );
-    signal = options!.signal as AbortSignal;
-    return stalledResponse(options);
-  });
-  await mount();
-  await click("Check original transaction");
-  await tick(29999);
-  expect(signal!.aborted).toBe(false);
-  await tick(1);
-  expect(signal!.aborted).toBe(true);
-  expect(fetch).toHaveBeenCalledTimes(1);
-  expect(values.get(key)).toBe(original);
-  expect(button("Check original transaction").props.disabled).toBe(false);
-});
-it("automatic confirmation gives a later stalled lookup only the remaining overall window", async () => {
-  values.set(key, JSON.stringify({ ...stored, attempted: true }));
-  const signals: AbortSignal[] = [];
-  vi.mocked(fetch).mockImplementation((_url, options) => {
-    expect(action(options)).toBe("status");
-    signals.push(options!.signal as AbortSignal);
-    if (signals.length === 1)
-      return new Promise<Response>((resolve) =>
-        setTimeout(() => resolve(status("UNKNOWN")), 20000),
-      );
-    return stalledResponse(options);
-  });
-  await mount();
-  await tick(21000);
-  expect(fetch).toHaveBeenCalledTimes(2);
-  expect(saved().status).toBe("UNKNOWN");
-  await tick(8999);
-  expect(signals[1]!.aborted).toBe(false);
-  await tick(1);
-  expect(signals[1]!.aborted).toBe(true);
-  expect(fetch).toHaveBeenCalledTimes(2);
-  expect(message()).toContain("Original evidence is retained");
-  expect(saved().signedXdr).toBe(stored.signedXdr);
-  expect(saved().attempted).toBe(true);
-  expect(button("Check original transaction").props.disabled).toBe(false);
-});
-it("rerendering the same scope does not restart or duplicate bounded confirmation", async () => {
-  values.set(key, JSON.stringify({ ...stored, attempted: true }));
-  vi.mocked(fetch)
-    .mockResolvedValueOnce(status("UNKNOWN"))
-    .mockResolvedValue(status("SUCCESS"));
-  await mount();
-  await act(() =>
-    renderer!.update(
-      <StarterApp config={{ ready: true, scope, deploymentUrl: scope }} />,
-    ),
-  );
-  expect(fetch).toHaveBeenCalledTimes(1);
-  await tick(1000);
-  expect(fetch).toHaveBeenCalledTimes(2);
-  expect(saved().status).toBe("SUCCESS");
-});
-it("a late preparation reply after scope change cannot create a record in either scope", async () => {
-  vi.mocked(connectWallet).mockResolvedValue(fixtureAddress);
-  let resolve!: (response: Response) => void;
-  vi.mocked(fetch)
-    .mockResolvedValueOnce(Response.json({ data: {} }))
-    .mockImplementation(
-      () =>
-        new Promise<Response>((r) => {
-          resolve = r;
-        }),
-    );
-  await mount();
-  await click("Connect Freighter");
-  await click("Prepare 1 XLM payment");
-  await act(() =>
-    renderer!.update(
-      <StarterApp
-        config={{
-          ready: true,
-          scope: scope + "-other",
-          deploymentUrl: scope + "-other",
-        }}
-      />,
-    ),
-  );
-  await act(async () => {
-    resolve(Response.json({ data: stored.prepared }));
-  });
-  expect(values.size).toBe(0);
-  expect(message()).not.toContain("Prepared and saved");
-});
-it("late wallet signing after unmount cannot overwrite the saved preparation", async () => {
-  values.set(key, JSON.stringify({ ...stored, signedXdr: undefined }));
-  vi.mocked(connectWallet).mockResolvedValue(fixtureAddress);
-  vi.mocked(fetch).mockResolvedValue(Response.json({ data: {} }));
-  let resolve!: (xdr: string) => void;
-  vi.mocked(signPrepared).mockImplementation(
-    () =>
-      new Promise<string>((r) => {
-        resolve = r;
-      }),
-  );
-  await mount();
-  await click("Connect Freighter");
-  await click("Sign original transaction");
-  const original = values.get(key);
-  await act(() => renderer!.unmount());
-  renderer = undefined;
-  await act(async () => {
-    resolve(stored.signedXdr);
-  });
-  expect(values.get(key)).toBe(original);
-  expect(saved().signedXdr).toBeUndefined();
-});
-it("late submit success after scope change cannot start confirmation or write to the new scope", async () => {
-  values.set(key, JSON.stringify(stored));
-  let resolve!: (response: Response) => void;
-  vi.mocked(fetch).mockImplementation(
-    () =>
-      new Promise<Response>((r) => {
-        resolve = r;
-      }),
-  );
-  await mount();
-  await click("Submit saved envelope");
-  const original = values.get(key);
-  await act(() =>
-    renderer!.update(
-      <StarterApp
-        config={{
-          ready: true,
-          scope: scope + "-other",
-          deploymentUrl: scope + "-other",
-        }}
-      />,
-    ),
-  );
-  await act(async () => {
-    resolve(status("SUCCESS"));
-  });
-  expect(fetch).toHaveBeenCalledTimes(1);
-  expect(values.get(key)).toBe(original);
-  expect(values.has(key + "-other")).toBe(false);
-  expect(message()).not.toContain("Original transaction confirmed");
-});
-it("reload checks an earlier REJECTED response without treating it as final failure", async () => {
+it("reload resumes only original-transaction reads and reaches the verified receipt", async () => {
+  feesPaid = true;
   values.set(
     key,
-    JSON.stringify({ ...stored, attempted: true, status: "REJECTED" }),
+    JSON.stringify({
+      version: 2,
+      scope,
+      address: fixtureAddress,
+      paymentId: "12345678-1234-1234-1234-123456789abc",
+      prepared,
+      signedXdr: prepared.xdr,
+      attempted: true,
+    }),
   );
-  vi.mocked(fetch).mockResolvedValue(status("SUCCESS"));
-  await mount();
-  expect(fetch).toHaveBeenCalledTimes(1);
-  expect(action(vi.mocked(fetch).mock.calls[0]?.[1])).toBe("status");
+  const seen: string[] = [];
+  vi.mocked(fetch).mockImplementation(async (url, options) => {
+    if (options?.body)
+      seen.push((JSON.parse(options.body as string) as { action: string }).action);
+    return fetchRouter(url, options);
+  });
+  await mountStudent();
+  expect(seen.filter((a) => a === "status").length).toBeGreaterThanOrEqual(1);
+  expect(seen).not.toContain("submit");
+  expect(seen).not.toContain("prepare");
   expect(saved().status).toBe("SUCCESS");
+  expect(renderer!.root.findByProps({ "data-testid": "verified-badge" })).toBeDefined();
+});
+it("unresolved transactions never show the verified badge", async () => {
+  vi.mocked(fetch).mockImplementation(async (url, options) => {
+    if (options?.body) {
+      const body = JSON.parse(options.body as string) as { action: string };
+      if (body.action === "status")
+        return json({
+          payment: paymentView({ status: "SUBMITTED", txStatus: "UNKNOWN" }),
+          result: { txHash: hash, status: "UNKNOWN", network: "testnet" },
+        });
+    }
+    return fetchRouter(url, options);
+  });
+  values.set(
+    key,
+    JSON.stringify({
+      version: 2,
+      scope,
+      address: fixtureAddress,
+      paymentId: "12345678-1234-1234-1234-123456789abc",
+      prepared,
+      signedXdr: prepared.xdr,
+      attempted: true,
+    }),
+  );
+  await mountStudent();
+  expect(
+    renderer!.root.findAllByProps({ "data-testid": "verified-badge" }),
+  ).toHaveLength(0);
+  expect(saved().status).toBe("UNKNOWN");
+  expect(
+    pageText(),
+  ).toContain("not confirmed yet");
+});
+it("releases the checkout for a new payment after Paiflow verifies SUCCESS", async () => {
+  vi.mocked(connectWallet).mockResolvedValue(fixtureAddress);
+  vi.mocked(signPrepared).mockResolvedValue(prepared.xdr);
+  let prepareCalls = 0;
+  vi.mocked(fetch).mockImplementation(async (url, options) => {
+    if (
+      options?.body &&
+      String(url).endsWith("/api/payments") &&
+      (JSON.parse(options.body as string) as { action: string }).action ===
+        "prepare"
+    )
+      prepareCalls++;
+    return fetchRouter(url, options);
+  });
+  await mountStudent();
+  for (const box of renderer!.root.findAllByType("input")) {
+    await act(async () => {
+      box.props.onChange();
+    });
+  }
+  await click("Connect Freighter");
+  await click("Pay selected fees · 1 testnet XLM");
+  await click("Sign original transaction");
+  await click("Submit saved envelope");
+  expect(
+    renderer!.root.findByProps({ "data-testid": "verified-badge" }),
+  ).toBeDefined();
+  expect(saved().status).toBe("SUCCESS");
+  // The verified receipt no longer blocks a new checkout: the next prepare
+  // releases the resolved record instead of refusing replacement.
+  await click("Pay selected fees · 1 testnet XLM");
+  expect(prepareCalls).toBe(2);
+  expect(saved().status).toBeUndefined();
+  expect(saved().paymentId).toBe("12345678-1234-1234-1234-123456789abc");
+  expect(saved().prepared.txHash).toBe(hash);
+});
+it("staff app gates the ledger behind the access code and lists verified records", async () => {
+  await act(async () => {
+    renderer = create(<StaffApp />);
+  });
+  await act(async () => {});
+  expect(button("Sign in")).toBeDefined();
+  const input = renderer!.root.findByType("input");
+  await act(async () => {
+    input.props.onChange({ target: { value: "wrong" } });
+  });
+  await click("Sign in");
+  expect(message()).toContain("Access code refused.");
+  await act(async () => {
+    input.props.onChange({ target: { value: "campus-code-42" } });
+  });
+  vi.mocked(fetch).mockImplementation(async (url, options) => {
+    if (!options?.body && String(url).endsWith("/api/staff"))
+      return json({
+        payments: [paymentView({ status: "CONFIRMED", verifiedAt: "2026-10-20T00:05:00Z" })],
+      });
+    return fetchRouter(url, options);
+  });
+  await click("Sign in");
+  const ledger = renderer!.root.findByProps({ "data-testid": "staff-ledger" });
+  expect(ledger).toBeDefined();
+  expect(pageText()).toContain("Faculty Secretary");
+  expect(pageText()).toContain("₱500");
+  expect(pageText()).toContain("Registrar");
+  expect(pageText()).toContain("₱60");
+  expect(pageText()).toContain("Verified");
+  await click("Sign out");
+  expect(button("Sign in")).toBeDefined();
+});
+it("shows grouped demo fees and totals each defense group separately", async () => {
+  vi.mocked(fetch).mockImplementation(async (url, options) => {
+    if (!options?.body && String(url).endsWith("/api/fees"))
+      return json({ ready: true, fees: demoFeeCatalog });
+    return fetchRouter(url, options);
+  });
+  await mountStudent();
+  expect(pageText()).toContain("Thesis Partial Payment");
+  expect(pageText()).toContain("Pre-Oral Defense");
+  expect(pageText()).toContain("Final Defense");
+  expect(pageText()).toContain("Department");
+  const checkboxes = renderer!.root.findAllByType("input");
+  expect(checkboxes).toHaveLength(8);
+  // Select only the Pre-Oral group: Registrar ₱500 + Department ₱60.
+  await act(async () => {
+    checkboxes[4]!.props.onChange();
+  });
+  await act(async () => {
+    checkboxes[5]!.props.onChange();
+  });
+  const total = renderer!.root.findByProps({ "data-testid": "checkout-total" });
+  expect(total.children.join("")).toBe("₱560");
+  expect(pageText()).toContain("Final Defense");
+});
+it("staff can issue a single fee and create the demo defense groups", async () => {
+  await act(async () => {
+    renderer = create(<StaffApp />);
+  });
+  await act(async () => {});
+  const input = renderer!.root.findByType("input");
+  await act(async () => {
+    input.props.onChange({ target: { value: "campus-code-42" } });
+  });
+  vi.mocked(fetch).mockImplementation(async (url, options) => {
+    if (!options?.body && String(url).endsWith("/api/staff"))
+      return json({ payments: [] });
+    return fetchRouter(url, options);
+  });
+  await click("Sign in");
+  // Issue one manual fee.
+  const fields = renderer!.root.findAllByType("input");
+  expect(fields).toHaveLength(3);
+  await act(async () => {
+    fields[0]!.props.onChange({ target: { value: "ID replacement fee" } });
+  });
+  await act(async () => {
+    fields[1]!.props.onChange({ target: { value: "Registrar" } });
+  });
+  await act(async () => {
+    fields[2]!.props.onChange({ target: { value: "500" } });
+  });
+  await click("Add fee");
+  expect(message()).toContain("Fee added for Registrar (₱500)");
+  // Create the three demo groups.
+  await click("Create Demo Fees");
+  expect(message()).toContain("Thesis Partial Payment");
+  expect(message()).toContain("Pre-Oral Defense");
+  expect(message()).toContain("Final Defense");
+  expect(message()).toContain("were not changed");
+  // Reset clears demo history and reissues fresh unpaid groups.
+  await click("Reset Demo Data");
+  expect(message()).toContain("Demo data reset");
+  expect(message()).toContain("removed 1 demo payment record(s)");
+  expect(message()).toContain("Thesis Partial Payment");
+  expect(message()).toContain("Real and non-demo records were not touched");
+});
+it("treats newly created demo fees as unpaid and eligible until confirmed paid", async () => {
+  vi.mocked(connectWallet).mockResolvedValue(fixtureAddress);
+  const preOralPaid = demoFeeCatalog.map((f) => ({
+    ...f,
+    paid: f.group === "Pre-Oral Defense",
+  }));
+  vi.mocked(fetch).mockImplementation(async (url, options) => {
+    if (String(url).endsWith("/api/fees"))
+      return options?.body
+        ? json(preOralPaid)
+        : json({ ready: true, fees: demoFeeCatalog });
+    return fetchRouter(url, options);
+  });
+  await mountStudent();
+  // Newly created fees render as selectable, unpaid items — never pre-checked
+  // or disabled, and with no Paid badges.
+  let checkboxes = renderer!.root.findAllByType("input");
+  expect(checkboxes).toHaveLength(8);
+  expect(checkboxes.every((c) => c.props.disabled === false)).toBe(true);
+  expect(
+    renderer!.root
+      .findAllByType("span")
+      .filter((s) => s.children.join("") === "Paid"),
+  ).toHaveLength(0);
+  // Selecting one Pre-Oral allocation updates the total to ₱500.
+  await act(async () => {
+    checkboxes[4]!.props.onChange();
+  });
+  let total = renderer!.root.findByProps({ "data-testid": "checkout-total" });
+  expect(total.children.join("")).toBe("₱500");
+  // Connect: the server now reports the Pre-Oral group as covered by a
+  // confirmed payment. Those rows become disabled with Paid badges, drop out
+  // of the selection, and the remaining group stays selectable and payable.
+  await click("Connect Freighter");
+  checkboxes = renderer!.root.findAllByType("input");
+  expect(checkboxes[4]!.props.disabled).toBe(true);
+  expect(checkboxes[5]!.props.disabled).toBe(true);
+  expect(checkboxes[6]!.props.disabled).toBe(false);
+  expect(checkboxes[7]!.props.disabled).toBe(false);
+  expect(
+    renderer!.root
+      .findAllByType("span")
+      .filter((s) => s.children.join("") === "Paid"),
+  ).toHaveLength(2);
+  expect(
+    renderer!.root.findAllByProps({ "data-testid": "checkout-summary" }),
+  ).toHaveLength(0);
+  // Selecting one remaining Final Defense allocation re-enables checkout.
+  await act(async () => {
+    checkboxes[6]!.props.onChange();
+  });
+  total = renderer!.root.findByProps({ "data-testid": "checkout-total" });
+  expect(total.children.join("")).toBe("₱500");
+  const pay = button("Pay selected fees · 1 testnet XLM");
+  expect(pay.props.disabled).toBe(false);
 });

@@ -5,12 +5,14 @@ export type Recovery = {
   version: 2;
   scope: string;
   address: string;
+  paymentId?: string;
   prepared: Prepared;
   signedXdr?: string;
   signing?: boolean;
   attempted?: boolean;
   status?: string;
 };
+const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 export function readRecovery(scope: string, raw: string): Recovery {
   const r = JSON.parse(raw) as Recovery;
   if (
@@ -19,6 +21,8 @@ export function readRecovery(scope: string, raw: string): Recovery {
     r.scope !== scope ||
     typeof r.address !== "string" ||
     !/^G[A-Z2-7]{55}$/.test(r.address) ||
+    (r.paymentId !== undefined &&
+      (typeof r.paymentId !== "string" || !UUID.test(r.paymentId))) ||
     !r.prepared ||
     r.prepared.network !== "testnet" ||
     r.prepared.networkPassphrase !== TESTNET ||
