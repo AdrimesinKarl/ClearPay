@@ -6,78 +6,47 @@ import {
   pesos,
   resolveAllocations,
 } from "@/lib/fees";
-it("catalog holds the three MVP fee groups with exact centavo amounts", () => {
-  expect(FEES).toHaveLength(6);
+it("catalog holds the two MVP fees with exact centavo amounts", () => {
+  expect(FEES).toHaveLength(2);
   const byId = new Map(FEES.map((f) => [f.id, f]));
-  expect(byId.get("thesis-partial-faculty-secretary")).toMatchObject({
-    group: "Thesis Partial Payment",
+  expect(byId.get("faculty-secretary")).toMatchObject({
     office: "Faculty Secretary",
+    label: "Records verification fee",
     amountCentavos: 50000,
   });
-  expect(byId.get("thesis-partial-registrar")).toMatchObject({
-    group: "Thesis Partial Payment",
+  expect(byId.get("registrar")).toMatchObject({
     office: "Registrar",
-    amountCentavos: 6000,
-  });
-  expect(byId.get("pre-oral-registrar")).toMatchObject({
-    group: "Pre-Oral Defense Fee",
-    office: "Registrar",
-    amountCentavos: 50000,
-  });
-  expect(byId.get("pre-oral-department")).toMatchObject({
-    group: "Pre-Oral Defense Fee",
-    office: "Department",
-    amountCentavos: 6000,
-  });
-  expect(byId.get("final-defense-registrar")).toMatchObject({
-    group: "Final Defense Fee",
-    office: "Registrar",
-    amountCentavos: 50000,
-  });
-  expect(byId.get("final-defense-department")).toMatchObject({
-    group: "Final Defense Fee",
-    office: "Department",
+    label: "Transcript processing fee",
     amountCentavos: 6000,
   });
 });
-it("computes the combined allocation total of ₱560 for a full group", () => {
+it("computes the combined allocation total of ₱560 for both fees", () => {
   const { allocations, totalCentavos } = resolveAllocations([
-    "thesis-partial-faculty-secretary",
-    "thesis-partial-registrar",
+    "faculty-secretary",
+    "registrar",
   ]);
   expect(totalCentavos).toBe(56000);
   expect(allocations.map((a) => a.office)).toEqual([
     "Faculty Secretary",
     "Registrar",
   ]);
-  expect(allocations.map((a) => a.group)).toEqual([
-    "Thesis Partial Payment",
-    "Thesis Partial Payment",
-  ]);
   expect(allocations[0]?.amountCentavos).toBe(50000);
   expect(allocations[1]?.amountCentavos).toBe(6000);
 });
 it("keeps catalog order and supports single-fee selection", () => {
-  const { allocations, totalCentavos } = resolveAllocations([
-    "thesis-partial-registrar",
-  ]);
+  const { allocations, totalCentavos } = resolveAllocations(["registrar"]);
   expect(totalCentavos).toBe(6000);
   expect(allocations).toHaveLength(1);
-  expect(allocations[0]?.feeId).toBe("thesis-partial-registrar");
+  expect(allocations[0]?.feeId).toBe("registrar");
 });
 it("rejects unknown, duplicate, empty and malformed selections", () => {
   for (const feeIds of [
     [],
-    ["thesis-partial-registrar", "thesis-partial-registrar"],
-    ["thesis-partial-registrar", "unknown-fee"],
-    ["pre-oral-registrar", "pre-oral-registrar"],
-    "thesis-partial-registrar",
+    ["registrar", "registrar"],
+    ["registrar", "unknown-fee"],
+    "registrar",
     [7],
-    [
-      "thesis-partial-faculty-secretary",
-      "thesis-partial-registrar",
-      "extra",
-    ],
+    ["faculty-secretary", "registrar", "extra"],
   ]) {
     expect(() => resolveAllocations(feeIds)).toThrow();
   }
@@ -101,20 +70,20 @@ it("parses staff-entered peso amounts into integer centavos", () => {
     expect(() => parsePesos(bad)).toThrow();
   }
 });
-it("defines three demo groups mirroring the MVP catalog", () => {
+it("defines three demo groups with per-office allocations", () => {
   expect(DEMO_FEE_GROUPS).toHaveLength(3);
   expect(DEMO_FEE_GROUPS.map((g) => g.group)).toEqual([
     "Thesis Partial Payment",
-    "Pre-Oral Defense Fee",
-    "Final Defense Fee",
+    "Pre-Oral Defense",
+    "Final Defense",
   ]);
   const expected: Record<string, Record<string, number>> = {
     "Thesis Partial Payment": {
-      "Faculty Secretary": 50000,
-      Registrar: 6000,
+      Registrar: 150000,
+      Department: 50000,
     },
-    "Pre-Oral Defense Fee": { Registrar: 50000, Department: 6000 },
-    "Final Defense Fee": { Registrar: 50000, Department: 6000 },
+    "Pre-Oral Defense": { Registrar: 50000, Department: 6000 },
+    "Final Defense": { Registrar: 50000, Department: 6000 },
   };
   for (const g of DEMO_FEE_GROUPS) {
     expect(g.items).toHaveLength(2);
@@ -123,7 +92,7 @@ it("defines three demo groups mirroring the MVP catalog", () => {
     }
   }
 });
-it("resolves selections against an extended catalog and keeps the fee group", () => {
+it("resolves selections against an extended catalog", () => {
   const catalog = [
     ...FEES,
     {
@@ -134,13 +103,12 @@ it("resolves selections against an extended catalog and keeps the fee group", ()
     },
   ];
   const { allocations, totalCentavos } = resolveAllocations(
-    ["thesis-partial-registrar", "staff-issued-library-clearance"],
+    ["registrar", "staff-issued-library-clearance"],
     catalog,
   );
   expect(totalCentavos).toBe(31000);
   expect(allocations[0]).toMatchObject({
-    feeId: "thesis-partial-registrar",
-    group: "Thesis Partial Payment",
+    feeId: "registrar",
     office: "Registrar",
     amountCentavos: 6000,
   });

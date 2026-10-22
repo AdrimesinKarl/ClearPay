@@ -1,53 +1,23 @@
 import type { Allocation, Fee } from "@/lib/types";
 
 /**
- * Campus fee catalog — the ClearPay MVP sample fees. Each thesis milestone is
- * a payable group with per-office allocations. Amounts are integer centavos
- * computed on the server; the browser never supplies or amends amounts or
- * recipients. Recipient offices map to the payout wallets configured on the
- * PaiFlow deployment.
+ * Campus fee catalog — the ClearPay MVP sample fees: a ₱500 records
+ * verification fee to the Faculty Secretary and a ₱60 transcript processing
+ * fee to the Registrar. Amounts are integer centavos computed on the server;
+ * the browser never supplies or amends amounts or recipients. Recipient
+ * offices map to the payout wallets configured on the PaiFlow deployment.
  */
 export const FEES: readonly Fee[] = [
   {
-    id: "thesis-partial-faculty-secretary",
-    group: "Thesis Partial Payment",
+    id: "faculty-secretary",
     office: "Faculty Secretary",
-    label: "Thesis partial payment",
+    label: "Records verification fee",
     amountCentavos: 50000,
   },
   {
-    id: "thesis-partial-registrar",
-    group: "Thesis Partial Payment",
+    id: "registrar",
     office: "Registrar",
-    label: "Thesis partial payment",
-    amountCentavos: 6000,
-  },
-  {
-    id: "pre-oral-registrar",
-    group: "Pre-Oral Defense Fee",
-    office: "Registrar",
-    label: "Pre-oral defense fee",
-    amountCentavos: 50000,
-  },
-  {
-    id: "pre-oral-department",
-    group: "Pre-Oral Defense Fee",
-    office: "Department",
-    label: "Pre-oral defense fee",
-    amountCentavos: 6000,
-  },
-  {
-    id: "final-defense-registrar",
-    group: "Final Defense Fee",
-    office: "Registrar",
-    label: "Final defense fee",
-    amountCentavos: 50000,
-  },
-  {
-    id: "final-defense-department",
-    group: "Final Defense Fee",
-    office: "Department",
-    label: "Final defense fee",
+    label: "Transcript processing fee",
     amountCentavos: 6000,
   },
 ];
@@ -63,28 +33,28 @@ export function pesos(centavos: number): string {
 }
 
 /**
- * Demo fee groups for staff to issue or reissue after a reset. These mirror
- * the MVP catalog: each group is a separate payable bundle with its own
- * per-office allocations (offices map to the payout wallets configured on
- * the deployment). Amounts are fixed server-side in integer centavos.
+ * Demo fee groups for staff to issue or reissue after a reset. Each group is
+ * a separate payable bundle with its own per-office allocations (offices map
+ * to the payout wallets configured on the deployment). Amounts are fixed
+ * server-side in integer centavos.
  */
 export const DEMO_FEE_GROUPS = [
   {
     group: "Thesis Partial Payment",
     items: [
-      { office: "Faculty Secretary", amountCentavos: 50000 },
-      { office: "Registrar", amountCentavos: 6000 },
+      { office: "Registrar", amountCentavos: 150000 },
+      { office: "Department", amountCentavos: 50000 },
     ],
   },
   {
-    group: "Pre-Oral Defense Fee",
+    group: "Pre-Oral Defense",
     items: [
       { office: "Registrar", amountCentavos: 50000 },
       { office: "Department", amountCentavos: 6000 },
     ],
   },
   {
-    group: "Final Defense Fee",
+    group: "Final Defense",
     items: [
       { office: "Registrar", amountCentavos: 50000 },
       { office: "Department", amountCentavos: 6000 },
@@ -96,6 +66,8 @@ export const DEMO_FEE_GROUPS = [
 export const LEGACY_DEMO_GROUPS = [
   "Pre-Oral Defense",
   "Final Defense",
+  "Pre-Oral Defense Fee",
+  "Final Defense Fee",
 ] as const;
 
 /**

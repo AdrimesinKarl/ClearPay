@@ -73,8 +73,8 @@ afterEach(() => {
 });
 it("prepares a server-computed ₱560 allocation for both fees and persists a PREPARED record", async () => {
   const { payment, prepared } = await prepareFeePayment(fixtureAddress, [
-    "thesis-partial-registrar",
-    "thesis-partial-faculty-secretary",
+    "registrar",
+    "faculty-secretary",
   ]);
   expect(prepared.txHash).toBe(hash);
   expect(payment.totalCentavos).toBe(56000);
@@ -95,16 +95,16 @@ it("prepares a server-computed ₱560 allocation for both fees and persists a PR
 });
 it("rejects unknown selections and refuses a second active payment for the same student", async () => {
   await expect(
-    prepareFeePayment(fixtureAddress, ["thesis-partial-faculty-secretary", "fake"]),
+    prepareFeePayment(fixtureAddress, ["faculty-secretary", "fake"]),
   ).rejects.toThrow("Unknown fee");
   expect(mocks.prepare).not.toHaveBeenCalled();
-  await prepareFeePayment(fixtureAddress, ["thesis-partial-registrar"]);
+  await prepareFeePayment(fixtureAddress, ["registrar"]);
   await expect(
-    prepareFeePayment(fixtureAddress, ["thesis-partial-faculty-secretary"]),
+    prepareFeePayment(fixtureAddress, ["faculty-secretary"]),
   ).rejects.toThrow("still unresolved");
 });
 it("submit verifies the exact signed envelope before any upstream call", async () => {
-  const { payment } = await prepareFeePayment(fixtureAddress, ["thesis-partial-registrar"]);
+  const { payment } = await prepareFeePayment(fixtureAddress, ["registrar"]);
   const changedEnvelope = new TransactionBuilder(
     new Account(fixtureAddress, "8"),
     { fee: "100", networkPassphrase: Networks.TESTNET },
@@ -120,7 +120,7 @@ it("submit verifies the exact signed envelope before any upstream call", async (
   expect(getPayment(payment.id)?.status).toBe("PREPARED");
 });
 it("submit marks the record SUBMITTED and reports the transaction status", async () => {
-  const { payment } = await prepareFeePayment(fixtureAddress, ["thesis-partial-registrar"]);
+  const { payment } = await prepareFeePayment(fixtureAddress, ["registrar"]);
   const { payment: updated, result } = await submitFeePayment(
     payment.id,
     futurePrepared.xdr,
@@ -133,7 +133,7 @@ it("submit marks the record SUBMITTED and reports the transaction status", async
   );
 });
 it("only SUCCESS confirms the payment; PENDING keeps it unresolved", async () => {
-  const { payment } = await prepareFeePayment(fixtureAddress, ["thesis-partial-registrar"]);
+  const { payment } = await prepareFeePayment(fixtureAddress, ["registrar"]);
   await submitFeePayment(payment.id, futurePrepared.xdr);
   const pending = await refreshFeePayment(payment.id);
   expect(pending.payment.status).toBe("SUBMITTED");
@@ -148,7 +148,7 @@ it("only SUCCESS confirms the payment; PENDING keeps it unresolved", async () =>
   expect(stored?.status).toBe("CONFIRMED");
 });
 it("FAILED and REJECTED transactions become final ledger states", async () => {
-  const { payment } = await prepareFeePayment(fixtureAddress, ["thesis-partial-registrar"]);
+  const { payment } = await prepareFeePayment(fixtureAddress, ["registrar"]);
   mocks.status.mockResolvedValue({
     data: { txHash: hash, status: "FAILED", network: "testnet" },
   });
@@ -160,45 +160,24 @@ it("FAILED and REJECTED transactions become final ledger states", async () => {
 });
 it("marks fees paid only from CONFIRMED records for the same student", async () => {
   const before = feesWithStatus(fixtureAddress);
-  expect(before.map((f) => f.paid)).toEqual([
-    false,
-    false,
-    false,
-    false,
-    false,
-    false,
-  ]);
+  expect(before.map((f) => f.paid)).toEqual([false, false]);
   const { payment } = await prepareFeePayment(fixtureAddress, [
-    "thesis-partial-faculty-secretary",
-    "thesis-partial-registrar",
+    "faculty-secretary",
+    "registrar",
   ]);
   mocks.status.mockResolvedValue({
     data: { txHash: hash, status: "SUCCESS", network: "testnet" },
   });
   await refreshFeePayment(payment.id);
   const after = feesWithStatus(fixtureAddress);
-  expect(after.map((f) => f.paid)).toEqual([
-    true,
-    true,
-    false,
-    false,
-    false,
-    false,
-  ]);
+  expect(after.map((f) => f.paid)).toEqual([true, true]);
   const other = feesWithStatus(
     Keypair.fromRawEd25519Seed(Buffer.alloc(32, 8)).publicKey(),
   );
-  expect(other.map((f) => f.paid)).toEqual([
-    false,
-    false,
-    false,
-    false,
-    false,
-    false,
-  ]);
+  expect(other.map((f) => f.paid)).toEqual([false, false]);
 });
 it("public view never exposes the prepared envelope", async () => {
-  const { payment } = await prepareFeePayment(fixtureAddress, ["thesis-partial-registrar"]);
+  const { payment } = await prepareFeePayment(fixtureAddress, ["registrar"]);
   const stored = getPayment(payment.id);
   expect(stored).toBeDefined();
   const view = publicPayment(stored!);

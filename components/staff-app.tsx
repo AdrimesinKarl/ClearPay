@@ -185,7 +185,7 @@ export function StaffApp() {
                   type="text"
                   value={feeLabel}
                   onChange={(e) => setFeeLabel(e.target.value)}
-                  placeholder="e.g. Pre-Oral Defense Fee"
+                  placeholder="e.g. Pre-Oral Defense"
                   maxLength={120}
                 />
               </label>
