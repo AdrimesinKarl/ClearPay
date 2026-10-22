@@ -28,6 +28,7 @@ import {
   assertNoConflictingRecovery,
 } from "@/lib/recovery";
 import type { Recovery } from "@/lib/recovery";
+import { Seal } from "@/components/seal";
 
 type Operation = {
   signal: AbortSignal;
@@ -398,8 +399,11 @@ export function ClearPayApp({ config }: { config: PublicConfig }) {
     <main>
       <header className="app-header">
         <div className="brand">
-          <span className="brand-name">ClearPay</span>
-          <span className="brand-tagline">University fee settlement</span>
+          <Seal />
+          <span className="brand-text">
+            <span className="brand-name">ClearPay</span>
+            <span className="brand-tagline">University fee settlement</span>
+          </span>
         </div>
         <span className="chip" data-testid="network-chip">
           TESTNET
@@ -417,263 +421,285 @@ export function ClearPayApp({ config }: { config: PublicConfig }) {
         transaction.
       </p>
       {!config.ready ? (
-        <aside role="alert">{config.message}</aside>
+        <aside className="config-alert" role="alert">
+          {config.message}
+        </aside>
       ) : (
-        <p className="muted">
+        <p className="muted config-link">
           <a href={config.deploymentUrl} target="_blank" rel="noreferrer">
             Review your deployment and its recipients
           </a>
         </p>
       )}
 
-      <section aria-labelledby="fees-heading">
-        <p className="step-kicker">Step 1</p>
-        <h2 id="fees-heading">Fees</h2>
-        <p className="step-intro">
-          Select the fees to pay. Paid fees cannot be selected again.
-        </p>
-        {fees.length === 0 ? (
-          <p className="muted">Loading fees…</p>
-        ) : (
-          <ul className="fee-list">
-            {fees.map((fee) => (
-              <li key={fee.id}>
-                <label className="fee-row">
-                  <input
-                    type="checkbox"
-                    disabled={fee.paid || busy || blocked || (!!record && !resolved)}
-                    checked={selected.includes(fee.id)}
-                    onChange={() =>
-                      setSelected((prev) =>
-                        prev.includes(fee.id)
-                          ? prev.filter((id) => id !== fee.id)
-                          : [...prev, fee.id],
-                      )
-                    }
-                  />
-                  <span className="fee-name">
-                    {fee.group && (
-                      <span className="fee-group">{fee.group}</span>
-                    )}
-                    <span className="fee-office">{fee.office}</span>
-                    <span className="fee-label">{fee.label}</span>
-                  </span>
-                  <span className="fee-amount">{pesos(fee.amountCentavos)}</span>
-                  {fee.paid && <span className="badge badge-success">Paid</span>}
-                </label>
-              </li>
-            ))}
-          </ul>
-        )}
-        {selectedFees.length > 0 && (
-          <div className="summary-card" data-testid="checkout-summary">
-            <h3>Allocations</h3>
-            <table>
-              <tbody>
-                {selectedFees.map((fee) => (
-                  <tr key={fee.id}>
-                    <td>
-                      {fee.group && <div className="fee-group">{fee.group}</div>}
-                      {fee.office}
-                    </td>
-                    <td>{fee.label}</td>
-                    <td className="amount">{pesos(fee.amountCentavos)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="total-row">
-              <span className="total-label">Combined total</span>
-              <span className="total-amount" data-testid="checkout-total">
-                {pesos(selectedTotal)}
-              </span>
-            </div>
-          </div>
-        )}
-      </section>
-
-      <section aria-labelledby="checkout-heading">
-        <p className="step-kicker">Step 2</p>
-        <h2 id="checkout-heading">Checkout</h2>
-        <p className="wallet-line">
-          <button
-            className="secondary"
-            disabled={busy || !config.ready || blocked}
-            onClick={() =>
-              run(async (_current, op) => {
-                await browserRequest("/api/fees", undefined, op.signal);
-                const connected = await connectWallet();
-                if (op.valid()) setAddress(connected);
-              })
-            }
-          >
-            Connect Freighter
-          </button>
-          {address ? (
-            <span className="wallet-pill">{address}</span>
-          ) : (
-            <span className="muted">Wallet not connected</span>
-          )}
-        </p>
-        <p className="step-intro">
-          Settlement: 1 testnet XLM plus network fees for the selected fees.
-          Review the full transaction in Freighter.
-        </p>
-        <button
-          disabled={
-            busy ||
-            blocked ||
-            !address ||
-            selected.length === 0 ||
-            (!!record && !resolved)
-          }
-          onClick={() => run(prepare)}
-        >
-          Pay selected fees · 1 testnet XLM
-        </button>
-      </section>
-
-      <section aria-labelledby="sign-heading">
-        <p className="step-kicker">Step 3</p>
-        <h2 id="sign-heading">Sign, submit and verify</h2>
-        <button
-          disabled={
-            busy || !record || !!record.signedXdr || terminal(record) || blocked
-          }
-          onClick={() => run(sign)}
-        >
-          Sign original transaction
-        </button>{" "}
-        <button
-          className="secondary"
-          disabled={
-            busy ||
-            !record?.signedXdr ||
-            (!!record && terminal(record)) ||
-            blocked
-          }
-          onClick={() => run(submit)}
-        >
-          {record?.attempted
-            ? "Retry exact saved envelope"
-            : "Submit saved envelope"}
-        </button>
-        {record && (
-          <p className="muted">
-            Original transaction: <code>{record.prepared.txHash}</code>
-          </p>
-        )}
-      </section>
-
-      <section aria-labelledby="receipt-heading">
-        <p className="step-kicker">Step 4</p>
-        <h2 id="receipt-heading">Receipt</h2>
-        {payment ? (
-          <div data-testid="receipt">
-            <div
-              className={`status-banner ${bannerClass(payment.status, payment.txStatus)}`}
-            >
-              {payment.status === "CONFIRMED"
-                ? "Verified with Paiflow"
-                : payment.status}
-              {payment.txStatus ? ` · transaction ${payment.txStatus}` : ""}
-            </div>
-            <dl className="receipt-meta">
-              <div>
-                <dt>Transaction reference</dt>
-                <dd>
-                  <code>{payment.txHash}</code>
-                </dd>
-              </div>
-              <div>
-                <dt>Receipt number</dt>
-                <dd>{payment.id}</dd>
-              </div>
-              {payment.verifiedAt && (
-                <div>
-                  <dt>Verified at</dt>
-                  <dd>{payment.verifiedAt}</dd>
-                </div>
-              )}
-            </dl>
-            <table>
-              <tbody>
-                {payment.allocations.map((allocation) => (
-                  <tr key={allocation.feeId}>
-                    <td>
-                      {allocation.group && (
-                        <div className="fee-group">{allocation.group}</div>
-                      )}
-                      {allocation.office}
-                    </td>
-                    <td>{allocation.label}</td>
-                    <td className="amount">
-                      {pesos(allocation.amountCentavos)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td colSpan={2}>Total settled</td>
-                  <td className="amount">{payment.totalDisplay}</td>
-                </tr>
-              </tfoot>
-            </table>
-            {payment.status === "CONFIRMED" ? (
-              <p className="badge badge-success" data-testid="verified-badge">
-                Confirmed campus receipt
-              </p>
+      <div className="checkout-grid">
+        <div className="fees-column">
+          <section aria-labelledby="fees-heading">
+            <p className="step-kicker">Step 1</p>
+            <h2 id="fees-heading">Outstanding fees</h2>
+            <p className="step-intro">
+              Select the fees to pay. Paid fees cannot be selected again.
+            </p>
+            {fees.length === 0 ? (
+              <p className="muted">Loading fees…</p>
             ) : (
-              <p className="notice notice-warning" role="alert">
-                This receipt is not confirmed yet. Only a Paiflow-verified
-                SUCCESS marks it confirmed; never treat a redirect or an
-                unverified response as payment.
+              <ul className="fee-list">
+                {fees.map((fee) => (
+                  <li key={fee.id}>
+                    <label className="fee-row">
+                      <input
+                        type="checkbox"
+                        disabled={
+                          fee.paid || busy || blocked || (!!record && !resolved)
+                        }
+                        checked={selected.includes(fee.id)}
+                        onChange={() =>
+                          setSelected((prev) =>
+                            prev.includes(fee.id)
+                              ? prev.filter((id) => id !== fee.id)
+                              : [...prev, fee.id],
+                          )
+                        }
+                      />
+                      <span className="fee-name">
+                        {fee.group && (
+                          <span className="fee-group">{fee.group}</span>
+                        )}
+                        <span className="fee-office">{fee.office}</span>
+                        <span className="fee-label">{fee.label}</span>
+                      </span>
+                      <span className="fee-side">
+                        <span className="fee-amount">
+                          {pesos(fee.amountCentavos)}
+                        </span>
+                        {fee.paid && (
+                          <span className="badge badge-success">Paid</span>
+                        )}
+                      </span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {selectedFees.length > 0 && (
+              <div className="summary-card" data-testid="checkout-summary">
+                <h3>Allocations</h3>
+                <table>
+                  <tbody>
+                    {selectedFees.map((fee) => (
+                      <tr key={fee.id}>
+                        <td>
+                          {fee.group && (
+                            <div className="fee-group">{fee.group}</div>
+                          )}
+                          {fee.office}
+                        </td>
+                        <td>{fee.label}</td>
+                        <td className="amount">
+                          {pesos(fee.amountCentavos)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className="total-row">
+                  <span className="total-label">Combined total</span>
+                  <span className="total-amount" data-testid="checkout-total">
+                    {pesos(selectedTotal)}
+                  </span>
+                </div>
+              </div>
+            )}
+          </section>
+        </div>
+
+        <aside className="payment-rail" aria-label="Payment">
+          <section className="rail-section" aria-labelledby="checkout-heading">
+            <p className="step-kicker">Step 2</p>
+            <h2 id="checkout-heading">Checkout</h2>
+            <p className="wallet-line">
+              <button
+                className="secondary"
+                disabled={busy || !config.ready || blocked}
+                onClick={() =>
+                  run(async (_current, op) => {
+                    await browserRequest("/api/fees", undefined, op.signal);
+                    const connected = await connectWallet();
+                    if (op.valid()) setAddress(connected);
+                  })
+                }
+              >
+                Connect Freighter
+              </button>
+              {address ? (
+                <span className="wallet-pill">{address}</span>
+              ) : (
+                <span className="muted">Wallet not connected</span>
+              )}
+            </p>
+            <p className="step-intro">
+              Settlement: 1 testnet XLM plus network fees for the selected fees.
+              Review the full transaction in Freighter.
+            </p>
+            <button
+              disabled={
+                busy ||
+                blocked ||
+                !address ||
+                selected.length === 0 ||
+                (!!record && !resolved)
+              }
+              onClick={() => run(prepare)}
+            >
+              Pay selected fees · 1 testnet XLM
+            </button>
+          </section>
+
+          <section className="rail-section" aria-labelledby="sign-heading">
+            <p className="step-kicker">Step 3</p>
+            <h2 id="sign-heading">Sign, submit and verify</h2>
+            <button
+              disabled={
+                busy || !record || !!record.signedXdr || terminal(record) || blocked
+              }
+              onClick={() => run(sign)}
+            >
+              Sign original transaction
+            </button>
+            <button
+              className="secondary"
+              disabled={
+                busy ||
+                !record?.signedXdr ||
+                (!!record && terminal(record)) ||
+                blocked
+              }
+              onClick={() => run(submit)}
+            >
+              {record?.attempted
+                ? "Retry exact saved envelope"
+                : "Submit saved envelope"}
+            </button>
+            {record && (
+              <p className="muted">
+                Original transaction: <code>{record.prepared.txHash}</code>
               </p>
             )}
-          </div>
-        ) : (
-          <p className="muted">No payment prepared yet.</p>
-        )}
-        <button
-          className="secondary"
-          disabled={busy || !record || blocked}
-          onClick={() => run(status)}
-        >
-          Check transaction
-        </button>{" "}
-        <button
-          className="danger"
-          disabled={busy || !record || !terminal(record) || blocked}
-          onClick={() => run(clear)}
-        >
-          Acknowledge final result and clear
-        </button>
-        <p className="muted">
-          Reloading restores the original preparation and signed envelope. Keep
-          this browser&apos;s storage until the original transaction is
-          resolved. Re-signing uses the same body; it never prepares a
-          replacement. Once Paiflow verifies SUCCESS, the checkout releases
-          automatically for the next payment; FAILED results stay until you
-          acknowledge them above.
-        </p>
-      </section>
+          </section>
 
-      <p className="live-status" role="status" aria-live="polite">
-        {confirming ? message : busy ? "Working…" : message}
-      </p>
-      {confirming && (
-        <button
-          className="danger"
-          onClick={() => {
-            active.current?.abort();
-            setMessage(CONFIRMATION_UNRESOLVED);
-          }}
-        >
-          Stop checking
-        </button>
-      )}
-      <aside>
+          <section className="rail-section" aria-labelledby="receipt-heading">
+            <p className="step-kicker">Step 4</p>
+            <h2 id="receipt-heading">Receipt</h2>
+            {payment ? (
+              <div data-testid="receipt">
+                <div
+                  className={`status-banner ${bannerClass(payment.status, payment.txStatus)}`}
+                >
+                  {payment.status === "CONFIRMED"
+                    ? "Verified with Paiflow"
+                    : payment.status}
+                  {payment.txStatus ? ` · transaction ${payment.txStatus}` : ""}
+                </div>
+                <dl className="receipt-meta">
+                  <div>
+                    <dt>Transaction reference</dt>
+                    <dd>
+                      <code>{payment.txHash}</code>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Receipt number</dt>
+                    <dd>{payment.id}</dd>
+                  </div>
+                  {payment.verifiedAt && (
+                    <div>
+                      <dt>Verified at</dt>
+                      <dd>{payment.verifiedAt}</dd>
+                    </div>
+                  )}
+                </dl>
+                <table>
+                  <tbody>
+                    {payment.allocations.map((allocation) => (
+                      <tr key={allocation.feeId}>
+                        <td>
+                          {allocation.group && (
+                            <div className="fee-group">{allocation.group}</div>
+                          )}
+                          {allocation.office}
+                        </td>
+                        <td>{allocation.label}</td>
+                        <td className="amount">
+                          {pesos(allocation.amountCentavos)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td colSpan={2}>Total settled</td>
+                      <td className="amount">{payment.totalDisplay}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+                {payment.status === "CONFIRMED" ? (
+                  <p className="stamp" data-testid="verified-badge">
+                    Confirmed campus receipt
+                  </p>
+                ) : (
+                  <p className="notice-warning" role="alert">
+                    This receipt is not confirmed yet. Only a Paiflow-verified
+                    SUCCESS marks it confirmed; never treat a redirect or an
+                    unverified response as payment.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="muted">No payment prepared yet.</p>
+            )}
+            <button
+              className="secondary"
+              disabled={busy || !record || blocked}
+              onClick={() => run(status)}
+            >
+              Check transaction
+            </button>
+            <button
+              className="danger"
+              disabled={busy || !record || !terminal(record) || blocked}
+              onClick={() => run(clear)}
+            >
+              Acknowledge final result and clear
+            </button>
+            <p className="muted">
+              Reloading restores the original preparation and signed envelope.
+              Keep this browser&apos;s storage until the original transaction is
+              resolved. Re-signing uses the same body; it never prepares a
+              replacement. Once Paiflow verifies SUCCESS, the checkout releases
+              automatically for the next payment; FAILED results stay until you
+              acknowledge them above.
+            </p>
+          </section>
+        </aside>
+      </div>
+
+      <div className="status-dock">
+        <p className="live-status" role="status" aria-live="polite">
+          {confirming ? message : busy ? "Working…" : message}
+        </p>
+        {confirming && (
+          <button
+            className="danger"
+            onClick={() => {
+              active.current?.abort();
+              setMessage(CONFIRMATION_UNRESOLVED);
+            }}
+          >
+            Stop checking
+          </button>
+        )}
+      </div>
+      <aside className="fine-print">
         ClearPay is a testnet demonstration: it has no student account system,
         rate limits or fulfilment integration, and the peso allocations are
         campus ledger entries recorded against the verified transaction, not

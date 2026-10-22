@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import type { Fee, PublicPayment } from "@/lib/types";
 import { pesos } from "@/lib/fees";
 import { browserRequest } from "@/lib/browser-api";
+import { Seal } from "@/components/seal";
 
 const OFFICE_SUGGESTIONS = ["Registrar", "Department", "Faculty Secretary"];
 
@@ -136,8 +137,11 @@ export function StaffApp() {
     <main>
       <header className="app-header">
         <div className="brand">
-          <span className="brand-name">ClearPay · Staff</span>
-          <span className="brand-tagline">Campus payment verification</span>
+          <Seal />
+          <span className="brand-text">
+            <span className="brand-name">ClearPay · Staff</span>
+            <span className="brand-tagline">Campus payment verification</span>
+          </span>
         </div>
         <span className="chip" data-testid="network-chip">
           TESTNET
@@ -154,7 +158,11 @@ export function StaffApp() {
       </p>
       {!authed ? (
         <section className="signin-card" aria-labelledby="staff-signin-heading">
+          <p className="step-kicker">Restricted</p>
           <h2 id="staff-signin-heading">Staff sign-in</h2>
+          <p className="step-intro">
+            Enter the shared campus access code to open the payment ledger.
+          </p>
           <label>
             Access code
             <input
@@ -170,7 +178,107 @@ export function StaffApp() {
         </section>
       ) : (
         <>
-          <section aria-labelledby="staff-fees-heading">
+          <section
+            className="staff-panel"
+            aria-labelledby="staff-ledger-heading"
+          >
+            <div className="staff-header-row">
+              <div>
+                <p className="step-kicker">Campus ledger</p>
+                <h2 id="staff-ledger-heading">Payment records</h2>
+              </div>
+              <span style={{ marginLeft: "auto" }}>
+                <button
+                  className="secondary"
+                  disabled={busy}
+                  onClick={() => void load()}
+                >
+                  Refresh
+                </button>{" "}
+                <button
+                  className="danger"
+                  disabled={busy}
+                  onClick={() => void logout()}
+                >
+                  Sign out
+                </button>
+              </span>
+            </div>
+            {payments.length === 0 ? (
+              <p className="muted">No payment records yet.</p>
+            ) : (
+              <div className="table-scroll">
+                <table className="staff-ledger" data-testid="staff-ledger">
+                  <thead>
+                    <tr>
+                      <th>Receipt</th>
+                      <th>Student wallet</th>
+                      <th>Allocations</th>
+                      <th className="amount">Total</th>
+                      <th>Transaction</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {payments.map((payment) => (
+                      <tr key={payment.id}>
+                        <td>
+                          <code>{payment.id.slice(0, 8)}</code>
+                          {payment.verifiedAt ? (
+                            <div className="muted">
+                              verified {payment.verifiedAt}
+                            </div>
+                          ) : null}
+                        </td>
+                        <td className="address">
+                          <code>{payment.studentAddress}</code>
+                        </td>
+                        <td>
+                          {payment.allocations.map((allocation) => (
+                            <div key={allocation.feeId}>
+                              {allocation.group ? (
+                                <div className="fee-group">
+                                  {allocation.group}
+                                </div>
+                              ) : null}
+                              <strong>{allocation.office}:</strong>{" "}
+                              {pesos(allocation.amountCentavos)}
+                            </div>
+                          ))}
+                        </td>
+                        <td className="amount">{payment.totalDisplay}</td>
+                        <td className="address">
+                          <code>{payment.txHash}</code>
+                          {payment.txStatus ? (
+                            <div className="muted">tx {payment.txStatus}</div>
+                          ) : null}
+                        </td>
+                        <td>
+                          {payment.status === "CONFIRMED" ? (
+                            <span className="badge badge-success">
+                              Verified
+                            </span>
+                          ) : payment.status === "FAILED" ? (
+                            <span className="badge badge-danger">
+                              {payment.status}
+                            </span>
+                          ) : (
+                            <span className="badge badge-warning">
+                              {payment.status}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+          <section
+            className="staff-panel"
+            aria-labelledby="staff-fees-heading"
+          >
             <p className="step-kicker">Fee catalog</p>
             <h2 id="staff-fees-heading">Issue a new fee</h2>
             <p className="step-intro">
@@ -217,7 +325,12 @@ export function StaffApp() {
               </label>
             </div>
             <button
-              disabled={busy || !feeLabel.trim() || !feeOffice.trim() || !feeAmount.trim()}
+              disabled={
+                busy ||
+                !feeLabel.trim() ||
+                !feeOffice.trim() ||
+                !feeAmount.trim()
+              }
               onClick={() => void addFee()}
             >
               Add fee
@@ -246,94 +359,12 @@ export function StaffApp() {
               touched.
             </p>
           </section>
-          <section aria-labelledby="staff-ledger-heading">
-          <div className="staff-header-row">
-            <div>
-              <p className="step-kicker">Campus ledger</p>
-              <h2 id="staff-ledger-heading">Payment records</h2>
-            </div>
-            <span style={{ marginLeft: "auto" }}>
-              <button className="secondary" disabled={busy} onClick={() => void load()}>
-                Refresh
-              </button>{" "}
-              <button className="danger" disabled={busy} onClick={() => void logout()}>
-                Sign out
-              </button>
-            </span>
-          </div>
-          {payments.length === 0 ? (
-            <p className="muted">No payment records yet.</p>
-          ) : (
-            <div className="table-scroll">
-              <table data-testid="staff-ledger">
-                <thead>
-                  <tr>
-                    <th>Receipt</th>
-                    <th>Student wallet</th>
-                    <th>Allocations</th>
-                    <th className="amount">Total</th>
-                    <th>Transaction</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {payments.map((payment) => (
-                    <tr key={payment.id}>
-                      <td>
-                        <code>{payment.id.slice(0, 8)}</code>
-                        {payment.verifiedAt ? (
-                          <div className="muted">
-                            verified {payment.verifiedAt}
-                          </div>
-                        ) : null}
-                      </td>
-                      <td className="address">
-                        <code>{payment.studentAddress}</code>
-                      </td>
-                      <td>
-                        {payment.allocations.map((allocation) => (
-                          <div key={allocation.feeId}>
-                            {allocation.group ? (
-                              <div className="fee-group">{allocation.group}</div>
-                            ) : null}
-                            <strong>{allocation.office}:</strong>{" "}
-                            {pesos(allocation.amountCentavos)}
-                          </div>
-                        ))}
-                      </td>
-                      <td className="amount">{payment.totalDisplay}</td>
-                      <td className="address">
-                        <code>{payment.txHash}</code>
-                        {payment.txStatus ? (
-                          <div className="muted">tx {payment.txStatus}</div>
-                        ) : null}
-                      </td>
-                      <td>
-                        {payment.status === "CONFIRMED" ? (
-                          <span className="badge badge-success">Verified</span>
-                        ) : payment.status === "FAILED" ? (
-                          <span className="badge badge-danger">
-                            {payment.status}
-                          </span>
-                        ) : (
-                          <span className="badge badge-warning">
-                            {payment.status}
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          </section>
         </>
       )}
       <p className="live-status" role="status" aria-live="polite">
         {busy ? "Working…" : message}
       </p>
-      <aside>
+      <aside className="fine-print">
         Staff records are the campus ledger view of the same payments students
         make. A record is only marked Verified after Paiflow reports the
         original transaction as SUCCESS; PENDING or UNKNOWN records stay
